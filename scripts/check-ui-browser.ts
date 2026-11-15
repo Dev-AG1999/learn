@@ -1,7 +1,13 @@
 import assert from "node:assert/strict"
 import { spawn, execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs"
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import {
   createServer as createHttpServer,
   request as httpRequest,
@@ -15,6 +21,8 @@ import { openTestBrowser } from "./browser-session.ts"
 import { hashPassword } from "../src/auth/password.ts"
 import { withAuth } from "../src/auth/repository.ts"
 import { withPayroll } from "../src/payroll-db.ts"
+import { salaryCsv, salaryXlsx } from "../src/import/template.ts"
+import { currentPeriod } from "../src/presentation.ts"
 
 async function listen(server: Server): Promise<number> {
   await new Promise<void>((resolve, reject) => {
@@ -177,6 +185,32 @@ try {
   }
   assert.ok(ready, "Production test server did not start.")
   browser = await openTestBrowser(true) // Only this isolated profile trusts the ephemeral test certificate.
+  const hydrationFailures: string[] = []
+  browser.on((message) => {
+    if (
+      [
+        "Runtime.exceptionThrown",
+        "Runtime.consoleAPICalled",
+        "Log.entryAdded",
+      ].includes(message.method ?? "") &&
+      /hydration|hydrating|server rendered|#418|#425/i.test(
+        JSON.stringify(message.params)
+      )
+    ) {
+      // Capture only the event kind, not potentially sensitive console payloads.
+      hydrationFailures.push(message.method ?? "hydration error")
+    }
+  })
+  await browser.send("Log.enable")
+  await browser.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `
+    const originalSupportedValuesOf = Intl.supportedValuesOf.bind(Intl);
+    Intl.supportedValuesOf = function(key) {
+      const values = originalSupportedValuesOf(key);
+      return key === "currency" ? [...values].reverse() : values;
+    };
+  `,
+  })
   const noOverflow = async (page: string) => {
     assert.equal(
       await browser!.evaluate(
@@ -246,6 +280,113 @@ try {
     (await withPayroll((db) => db.getClaims("test-a", 2026, 1)))[0]?.status,
     "approved"
   )
+  await browser.navigate(`${origin}/hr/employees/new?year=2026&month=2`)
+  await capture("add-employee-desktop", 1440)
+  await capture("add-employee-mobile", 390)
+  await browser.evaluate(
+    "document.querySelector('.employee-create-form [name=employeeId]').value='MANUAL-BROWSER'; document.querySelector('.employee-create-form [name=annualCtc]').value='1200000.29'; document.querySelector('.employee-create-form [name=otherDeductions]').value='100.50'; document.querySelector('.employee-create-form').requestSubmit()"
+  )
+  await browser.waitFor(
+    "location.pathname.startsWith('/hr/import/review/') && document.body.innerText.includes('Not saved yet')"
+  )
+  assert.equal(
+    await withPayroll((db) => db.get("MANUAL-BROWSER", 2026, 2)),
+    null
+  )
+  await capture("salary-review-mobile", 390)
+  await browser.evaluate(
+    "document.querySelector('.payroll-confirm-form [name=confirmed]').checked=true; document.querySelector('.payroll-confirm-form').requestSubmit()"
+  )
+  await browser.waitFor(
+    "document.body.innerText.includes('1 employee salary saved')"
+  )
+  assert.equal(
+    (await withPayroll((db) => db.getSalaryInputs("MANUAL-BROWSER", 2026, 2)))
+      ?.annualCtcMinor,
+    120000029
+  )
+  await browser.navigate(`${origin}/hr?year=2026&month=2`)
+  await browser.waitFor("document.body.innerText.includes('₹99,899.52')")
+  const upload = async (name: string, contents: Uint8Array) => {
+    await browser!.navigate(`${origin}/hr/import`)
+    const filePath = join(dir, name)
+    writeFileSync(filePath, contents)
+    const document = await browser!.send<{ root: { nodeId: number } }>(
+      "DOM.getDocument"
+    )
+    const input = await browser!.send<{ nodeId: number }>("DOM.querySelector", {
+      nodeId: document.root.nodeId,
+      selector: "input[name=sheet]",
+    })
+    await browser!.send("DOM.setFileInputFiles", {
+      nodeId: input.nodeId,
+      files: [filePath],
+    })
+    await browser!.evaluate(
+      "document.querySelector('.salary-upload-form').requestSubmit()"
+    )
+  }
+  await browser.navigate(`${origin}/hr/import`)
+  await capture("salary-upload-desktop", 1440)
+  await capture("salary-upload-mobile", 390)
+  await upload(
+    "not-a-salary.pdf",
+    new TextEncoder().encode("synthetic PDF test")
+  )
+  await browser.waitFor(
+    "document.body.innerText.includes('PDF and .xls files cannot be imported')"
+  )
+  await upload("salary.xlsx", salaryXlsx(true))
+  await browser.waitFor(
+    "location.pathname.startsWith('/hr/import/review/') && document.body.innerText.includes('3 employees')"
+  )
+  const importedPeriod = currentPeriod()
+  assert.equal(
+    await withPayroll((db) =>
+      db.get("DEMO-001", importedPeriod.year, importedPeriod.month)
+    ),
+    null
+  )
+  await capture("sheet-review-desktop", 1440)
+  await browser.evaluate(
+    "document.querySelector('.payroll-confirm-form [name=confirmed]').checked=true; document.querySelector('.payroll-confirm-form').requestSubmit()"
+  )
+  await browser.waitFor(
+    "document.body.innerText.includes('3 employee salaries saved')"
+  )
+  assert.equal(
+    (
+      await withPayroll((db) =>
+        db.orgTotals(importedPeriod.year, importedPeriod.month)
+      )
+    )[0].employeeCount,
+    3
+  )
+  await upload(
+    "salary-update.csv",
+    new TextEncoder().encode(salaryCsv(true).replace("120000000", "144000000"))
+  )
+  await browser.waitFor(
+    "location.pathname.startsWith('/hr/import/review/') && document.body.innerText.includes('Existing employee')"
+  )
+  await browser.evaluate(
+    "document.querySelector('.payroll-confirm-form [name=confirmed]').checked=true; document.querySelector('.payroll-confirm-form').requestSubmit()"
+  )
+  await browser.waitFor(
+    "document.body.innerText.includes('3 employee salaries saved')"
+  )
+  assert.equal(
+    (
+      await withPayroll((db) =>
+        db.getSalaryInputs(
+          "DEMO-001",
+          importedPeriod.year,
+          importedPeriod.month
+        )
+      )
+    )?.annualCtcMinor,
+    144000000
+  )
   await browser.evaluate(
     "document.querySelector('.sidebar-account form').requestSubmit()"
   )
@@ -270,8 +411,13 @@ try {
     ),
     false
   )
+  assert.deepEqual(
+    hydrationFailures,
+    [],
+    "Browser hydration must succeed even when browser and server currency metadata differ."
+  )
   console.log(
-    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
+    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, manual employee creation, CSV/Excel upload and confirmed import, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
   )
 } catch (error) {
   if (browser) {

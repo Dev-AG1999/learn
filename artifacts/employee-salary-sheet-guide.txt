@@ -1,7 +1,8 @@
-EMPLOYEE SALARY SHEET - PROPOSED IMPORT TEMPLATE
+EMPLOYEE SALARY SHEET - IMPORT TEMPLATE
 
 These files are synthetic assessment examples, not existing employee records.
-The app does not yet have a CSV/Excel upload endpoint. Do not paste CSV into
+Sign in as HR, choose Upload salary sheet, select a .csv or .xlsx file,
+validate it, review the rows and confirm the save. Do not paste salary data into
 HR policy text: that saves a policy document, not employee salary records.
 
 Each row represents one employee and one payroll month.
@@ -20,6 +21,14 @@ DEMO-003 has annual CTC of INR 6,00,000, represented as 60000000 paise.
 Amounts are annual CTC, not monthly salary. Monthly pay is calculated by the app.
 No reimbursement claims or login passwords are included in this template.
 
-The proposed import flow is: choose sheet, validate, review rows/errors,
+The import flow is: choose sheet, validate, review rows/errors,
 confirm, save employees and monthly payslips, refresh the dashboard.
 Employee salary records and employee login accounts are separate concerns.
+
+Use Add employee for manual entry. That form accepts rupee/currency amounts,
+not paise/minor units. It creates a new employee and their first monthly payslip
+after review and confirmation. Salary editor updates existing employee records.
+
+Limits: one payroll month per file; 10,000 employees; 2 MiB; one worksheet;
+no formulas, macros or external links. Reviews are private and expire after
+15 minutes. Nothing is committed if any row fails. Existing claims are preserved.

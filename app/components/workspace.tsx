@@ -15,7 +15,7 @@ export function Workspace({
 }: {
   principal: Principal
   period: Period
-  active: "overview" | "salary" | "payslip"
+  active: "overview" | "salary" | "payslip" | "create" | "import"
   children: ReactNode
 }) {
   const hr = principal.role === "hr"
@@ -39,6 +39,18 @@ export function Workspace({
           href: `/hr/salary?${query}`,
           icon: "wallet",
           active: active === "salary",
+        },
+        {
+          label: "Add employee",
+          href: `/hr/employees/new?${query}`,
+          icon: "plus",
+          active: active === "create",
+        },
+        {
+          label: "Upload salary sheet",
+          href: "/hr/import",
+          icon: "file",
+          active: active === "import",
         },
         { label: "Reimbursements", href: `/hr?${query}#claims`, icon: "clock" },
         { label: "HR documents", href: `/hr?${query}#documents`, icon: "file" },
@@ -130,11 +142,15 @@ export function Workspace({
           <div className="breadcrumb">
             Workspace <span>/</span>{" "}
             <strong>
-              {active === "salary"
-                ? "Salary editor"
-                : hr
-                  ? "Overview"
-                  : "My payslip"}
+              {active === "create"
+                ? "Add employee"
+                : active === "import"
+                  ? "Upload salary sheet"
+                  : active === "salary"
+                    ? "Salary editor"
+                    : hr
+                      ? "Overview"
+                      : "My payslip"}
             </strong>
           </div>
           <div className="topbar-meta">

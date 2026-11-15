@@ -3,6 +3,7 @@ import { withPayroll } from "../../../src/payroll-db.ts"
 import { readSalaryEditor } from "../../../src/salary-editor.ts"
 import { readPeriod } from "../../../src/period.ts"
 import {
+  currencyChoices,
   currentPeriod,
   monthNames,
   periodLabel,
@@ -129,6 +130,7 @@ export default async function SalaryPage({
           <div className="editor-columns">
             <SalaryEditor
               key={`${employeeId}-${period.year}-${period.month}`}
+              currencies={currencyChoices()}
               employeeId={employeeId}
               year={period.year}
               month={period.month}
@@ -178,7 +180,7 @@ export default async function SalaryPage({
             <EmptyState
               icon="users"
               title="Start with an employee"
-              description="Enter an existing employee ID above to review their monthly pay. Nothing changes until you confirm and save."
+              description="Enter an existing employee ID above to review their monthly pay. Nothing changes until you confirm and save. To create a new employee, use Add employee."
             />
           </section>
         )

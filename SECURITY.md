@@ -144,3 +144,22 @@ and local HTTPS proxy with synthetic data. Only its fresh Chrome profile ignores
 the temporary certificate error; it does not relax application origin checks,
 production cookies, or your normal browser's TLS settings. The shared Chrome
 harness is also used by the native login-form regression test.
+
+## Salary-sheet uploads
+
+The HR upload endpoint `/hr/import/preview`, confirmation endpoint
+`/hr/import/commit`, template downloads and manual-create action check HR access
+independently. Cookie mutations require the configured Origin. Previews are
+owner-bound SQLite records with random IDs and a 15-minute lifetime; confirmation
+never accepts salary values from client hidden fields. It checks a snapshot
+fingerprint for every employee/month, including leave and claims, then commits
+all rows in one SQLite transaction. Successful confirmations are idempotent.
+
+Upload bodies are bounded before multipart parsing; files are limited to 2 MiB
+and 10,000 rows. Excel ZIP size, entry count, worksheet dimensions, formulas,
+macros, external links and XML entities are checked before the XLSX reader runs.
+Only normalized review inputs are stored, not the raw uploaded file. Up to three
+recent reviews per account and 50 globally bound temporary storage. Expired data
+is cleaned during subsequent staging; SQLite and backup encryption remain a
+host/deployment responsibility. Do not send file contents to logs or AI services.
+Employee salary creation does not create authentication accounts or passwords.

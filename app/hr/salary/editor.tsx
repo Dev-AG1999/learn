@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react"
 import { saveSalary, type SalaryState } from "./actions.ts"
-import { minorUnitHelp, periodLabel } from "../../../src/presentation.ts"
+import { periodLabel, type CurrencyChoice } from "../../../src/presentation.ts"
 import { Icon } from "../../components/ui-icon.tsx"
 
 export function SalaryEditor({
@@ -14,6 +14,7 @@ export function SalaryEditor({
   currency,
   unpaidLeaveDays,
   otherDeductionsMinor,
+  currencies,
 }: {
   employeeId: string
   year: number
@@ -23,6 +24,7 @@ export function SalaryEditor({
   currency: string
   unpaidLeaveDays: number
   otherDeductionsMinor: number
+  currencies: readonly CurrencyChoice[]
 }) {
   const [state, action, pending] = useActionState(saveSalary, {
     ok: false,
@@ -52,8 +54,11 @@ export function SalaryEditor({
           <p>
             <strong>Entering salary amounts</strong>
             <span>
-              {minorUnitHelp(selectedCurrency)} Only the selected month is
-              recalculated.
+              {
+                currencies.find((choice) => choice.code === selectedCurrency)
+                  ?.help
+              }{" "}
+              Only the selected month is recalculated.
             </span>
           </p>
         </div>
@@ -80,7 +85,7 @@ export function SalaryEditor({
               defaultValue={state.values?.currency ?? currency}
               onChange={(event) => setSelectedCurrency(event.target.value)}
             >
-              {Intl.supportedValuesOf("currency").map((code) => (
+              {currencies.map(({ code }) => (
                 <option key={code}>{code}</option>
               ))}
             </select>

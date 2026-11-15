@@ -51,7 +51,12 @@ export async function openTestBrowser(ignoreCertificateErrors = false) {
       chrome.kill("SIGTERM")
       await new Promise<void>((resolve) => chrome.once("exit", () => resolve()))
     }
-    rmSync(profile, { recursive: true, force: true })
+    rmSync(profile, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    })
   }
   try {
     const portFile = join(profile, "DevToolsActivePort")

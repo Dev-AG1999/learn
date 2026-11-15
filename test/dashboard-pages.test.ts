@@ -22,6 +22,12 @@ vi.mock("next/navigation.js", () => ({
   },
 }))
 vi.mock("../app/hr/salary/actions.ts", () => ({ saveSalary: vi.fn() }))
+vi.mock("../app/hr/employees/new/actions.ts", () => ({
+  previewEmployee: vi.fn(),
+}))
+import NewEmployeePage from "../app/hr/employees/new/page.tsx"
+import ImportPage from "../app/hr/import/page.tsx"
+import ReviewPage from "../app/hr/import/review/[draftId]/page.tsx"
 import HrPage from "../app/hr/page.tsx"
 import SalaryPage from "../app/hr/salary/page.tsx"
 import EmployeePage from "../app/employee/[employeeId]/page.tsx"
@@ -154,4 +160,64 @@ test("login landing routes users to their own role workspace without a hardcoded
     employeeId: "emp-a",
   }
   await expect(HomePage()).rejects.toThrow("redirect:/employee/emp-a")
+})
+
+test("manual employee entry accepts major currency amounts and offers review before saving", async () => {
+  const html = renderToStaticMarkup(
+    await NewEmployeePage({
+      searchParams: Promise.resolve({ year: "2026", month: "11" }),
+    })
+  )
+  expect(html).toContain('name="annualCtc"')
+  expect(html).toContain("Review employee salary")
+  expect(html).toContain("November")
+  expect(html).toContain("Add an employee")
+})
+
+test("salary upload page provides real CSV and Excel templates", async () => {
+  const html = renderToStaticMarkup(await ImportPage())
+  expect(html).toContain('accept=".csv,.xlsx"')
+  expect(html).toContain("/hr/import/template?format=xlsx")
+  expect(html).toContain("Validate and review sheet")
+  expect(html).toContain("annualCtcMinor")
+})
+
+test("review page shows pending records without writing and displays a saved receipt only after commit", async () => {
+  const result = await withPayroll((db) =>
+    db.stagePayroll({
+      ownerId: "hr-a",
+      mode: "create",
+      source: "Manual",
+      rows: [
+        {
+          employeeId: "REVIEW-1",
+          year: 2026,
+          month: 11,
+          annualCtcMinor: 120000000,
+          currency: "INR",
+          calendarDays: 30,
+          unpaidLeaveDays: 0,
+          otherDeductionsMinor: 0,
+        },
+      ],
+    })
+  )
+  if (!result.ok) throw new Error("Fixture failed")
+  const props = {
+    params: Promise.resolve({ draftId: result.draftId }),
+    searchParams: Promise.resolve({}),
+  }
+  let html = renderToStaticMarkup(await ReviewPage(props))
+  expect(html).toContain("Not saved yet")
+  expect(html).toContain("₹12,00,000.00")
+  expect(html).toContain('action="/hr/import/commit"')
+  expect(await withPayroll((db) => db.get("REVIEW-1", 2026, 11))).toBeNull()
+  await withPayroll((db) => db.commitPayrollDraft(result.draftId, "hr-a", true))
+  html = renderToStaticMarkup(await ReviewPage(props))
+  expect(html).toContain("1 employee salary saved")
+  expect(html).not.toContain('action="/hr/import/commit"')
+  mocks.principal.userId = "another-hr"
+  html = renderToStaticMarkup(await ReviewPage(props))
+  expect(html).toContain("This review is unavailable")
+  expect(html).not.toContain("₹12,00,000.00")
 })

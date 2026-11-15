@@ -1547,3 +1547,95 @@ tbody tr:hover {
     scroll-behavior: auto !important;
   }
 }
+
+/* Employee creation and salary-sheet review. */
+.entry-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.dashboard-entry-actions,
+.success-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sheet-upload {
+  align-items: center;
+  text-align: center;
+  border: 1px dashed #a9b9df;
+  background: #f8faff;
+  padding: 30px 20px;
+  border-radius: 12px;
+  gap: 12px;
+}
+.sheet-upload .empty-icon {
+  margin-bottom: 0;
+}
+.sheet-upload input {
+  max-width: 390px;
+}
+.template-links {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  align-items: flex-start;
+}
+.entry-errors {
+  margin: 0 23px 23px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.entry-errors ul {
+  padding-left: 20px;
+  margin: 12px 0;
+}
+.entry-errors li + li {
+  margin-top: 7px;
+}
+.upload-progress {
+  padding: 0 23px 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.review-pagination {
+  padding: 16px 23px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+.review-pagination > div {
+  display: flex;
+  gap: 10px;
+}
+.employee-create-form .entry-errors {
+  margin: 0;
+}
+@media (max-width: 1100px) {
+  .entry-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+@media (max-width: 700px) {
+  .dashboard-entry-actions {
+    width: 100%;
+  }
+  .dashboard-entry-actions .button {
+    flex: 1;
+  }
+  .review-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .success-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

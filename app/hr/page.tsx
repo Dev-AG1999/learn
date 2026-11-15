@@ -63,13 +63,19 @@ export default async function HrPage({
         title="Payroll overview"
         description="A clear view of your people, payroll, and what needs attention."
       >
-        <a
-          className="button button-primary"
-          href={`/hr/salary?${periodQuery(period)}`}
-        >
-          <Icon name="plus" size={18} />
-          Edit employee salary
-        </a>
+        <div className="dashboard-entry-actions">
+          <a className="button button-secondary" href="/hr/import">
+            <Icon name="file" size={18} />
+            Upload salary sheet
+          </a>
+          <a
+            className="button button-primary"
+            href={`/hr/employees/new?${periodQuery(period)}`}
+          >
+            <Icon name="plus" size={18} />
+            Add employee
+          </a>
+        </div>
       </PageHeading>
       <div className="section-toolbar">
         <div>
@@ -132,9 +138,7 @@ export default async function HrPage({
             {pending.claims.length}
             {pending.nextCursor ? "+" : ""}
           </strong>
-          <p>
-            On this page · across all periods
-          </p>
+          <p>On this page · across all periods</p>
         </article>
       </section>
       <div className="dashboard-columns">
@@ -184,7 +188,7 @@ export default async function HrPage({
             <EmptyState
               icon="wallet"
               title="No payroll for this month"
-              description="There are no saved payslips in this period. Choose another month or save payroll for an existing employee."
+              description="There are no saved payslips in this period. Choose another month, add an employee, or upload your salary sheet."
             >
               <a
                 className="text-link"

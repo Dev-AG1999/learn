@@ -56,3 +56,14 @@ export function minorUnitHelp(currency: string): string {
     }).resolvedOptions().maximumFractionDigits ?? 2
   return `${10 ** digits} minor units = ${formatMoney(10 ** digits, currency)}. Enter whole minor units below.`
 }
+
+export type CurrencyChoice = { code: string; help: string }
+
+// Call in Server Components and serialize these choices to Client Components.
+// Browser and Node ICU versions can expose different supported currencies/symbols.
+export function currencyChoices(): CurrencyChoice[] {
+  return Intl.supportedValuesOf("currency").map((code) => ({
+    code,
+    help: minorUnitHelp(code),
+  }))
+}

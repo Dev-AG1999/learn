@@ -159,3 +159,46 @@ checks role landing, named months, empty states, a real salary save, claim appro
 role-specific navigation and horizontal overflow, and saves screenshots under the
 OS temporary directory in `paydesk-ui-review`. The test server and data are
 removed afterward. No real payroll data is read by the browser fixture.
+
+## Employee salary entry and sheet import milestone
+
+User authorization: add manual employee salary entry and a salary-sheet upload
+alternative to editing an existing employee by ID. The UI milestone was committed
+before implementation. HR now has separate Add employee, Upload salary sheet and
+Salary editor workflows; HR policy text remains a separate document workflow.
+
+Manual creation accepts currency-unit decimal amounts, converts exactly to safe
+integer minor units, rejects existing employee IDs and stages a first monthly
+payslip. CSV and single-worksheet XLSX uploads use the seven-column template
+already supplied: employeeId, year, month, annualCtcMinor, currency,
+unpaidLeaveDays, otherDeductionsMinor. The importer supports one payroll month and
+10,000 employee rows per 2 MiB file. Detailed rules and examples: `IMPORT_GUIDE.md`.
+
+The same validated, owner-bound SQLite review mechanism serves both paths. No
+payroll is written before explicit confirmation. Reviews expire after 15 minutes,
+are paginated at 25 rows, and have bounded retention. Confirmation revalidates
+versions and saves the entire batch atomically using the existing save-month
+routine and domain payslip computation. SQLite savepoints preserve single-row
+transaction behavior inside a batch. Existing claims and other months' snapshots
+are preserved. Confirmation replay is idempotent. New login accounts are not
+created from salary records.
+
+XLSX parsing uses read-excel-file. fflate bounds ZIP entries/expanded sizes and
+canonicalizes ZIP metadata before parsing. Formula cells, external links, XML
+entities, excessive worksheet ranges, invalid headers, duplicate employee IDs,
+unsafe monetary integers and invalid leave/period/currency values are rejected.
+Templates and previews/confirmation require HR authorization. Cookie mutations
+retain exact-origin validation. Review access is restricted by account ID.
+
+Checks: unit tests for CSV/XLSX parsing and exact decimal conversion; repository
+integration tests for confirmation, ownership, expiry, stale claims, preservation,
+10,000-row import and all-or-nothing rollback; real route/action tests; rendered
+page tests; TypeScript and production build; isolated Chrome tests for manual
+creation, Excel import, CSV update, review, confirmation and dashboard refresh.
+
+Hydration follow-up: Node and browser ICU versions can expose different currency
+lists (and formatting). Currency options and salary minor-unit help are now
+created in Server Components and passed as serializable props to both client
+forms. Initial client rendering does not recompute either from browser Intl.
+Regression tests simulate different client metadata, and the browser workflow
+reverses the browser currency list and fails on recoverable hydration errors.
