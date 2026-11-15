@@ -1,0 +1,4 @@
+employeeId,year,month,annualCtcMinor,currency,unpaidLeaveDays,otherDeductionsMinor
+DEMO-001,2026,11,120000000,INR,0,0
+DEMO-002,2026,11,96000000,INR,1,150000
+DEMO-003,2026,11,60000000,INR,0,0

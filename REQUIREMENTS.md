@@ -114,3 +114,48 @@ cookie enforcement. Tests cover password hashing, JWT policy/tampering/expiry,
 revocation, account disable/reset, persistent throttling, role isolation, employee
 ID tampering, cookie and bearer routes, CSRF denial, unauthorized salary actions,
 server page guards, private file permissions and existing payroll behavior.
+
+## Professional UI milestone
+
+User direction: redesign the existing HR and employee UI professionally, make
+calendar months understandable, and make each account's role-specific section
+clear. This milestone changes presentation and navigation while preserving the
+Next.js app, authentication boundaries, SQLite data, payroll calculation, and
+existing workflows. It does not implement spreadsheet import or new document
+formats; those remain separately approved milestones.
+
+The shared Paydesk workspace provides responsive navigation, an HR overview,
+salary editing, an employee payslip/claims area, and consistent login and
+permission screens. Login lands directly in the account's HR or employee area.
+Month selectors show January–December while submitting 1–12 to the existing
+backend. Headings show month names and years. Periods without query parameters
+use the current month in Asia/Kolkata instead of hardcoded January 2026.
+Invalid explicit periods show an error without displaying another month's pay.
+
+Money displayed from saved payslips uses the currency's minor-unit precision.
+Editing amounts still uses safe integer minor units, with currency-specific help.
+No net-pay computations are added to the UI. Organization totals stay grouped by
+currency. Reimbursement counts accurately describe the current page and all-
+period inbox rather than claiming a global count unavailable from the repository.
+
+Empty payroll periods have explanatory states and no invented totals or charts.
+Existing seeded data is retained. Database clearing, switching the active data
+source, CSV/Excel import and document generation are outside this milestone.
+The existing policy-text save and cited exact-text lookup remain available and
+are labelled accordingly; they are not presented as file-upload functionality.
+
+Successful policy saves, claim approval and employee claim submission return
+clear confirmation messages. Route-handler return redirects are relative so
+browser navigation preserves the original HTTPS origin behind a reverse proxy.
+CSRF and role/ownership validation remain unchanged.
+
+Validation includes unit tests for period handling, timezone boundaries and
+currency formatting; rendered component and real SQLite page integration tests;
+and isolated production browser checks at desktop, tablet and mobile widths.
+`npm run test:ui:browser` uses Chrome (CHROME_PATH configurable), a temporary
+synthetic database, random test credentials, and a local HTTPS reverse proxy. Its
+ephemeral certificate is trusted only by the isolated test browser profile. It
+checks role landing, named months, empty states, a real salary save, claim approval,
+role-specific navigation and horizontal overflow, and saves screenshots under the
+OS temporary directory in `paydesk-ui-review`. The test server and data are
+removed afterward. No real payroll data is read by the browser fixture.

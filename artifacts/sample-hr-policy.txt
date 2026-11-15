@@ -1,0 +1,22 @@
+SAMPLE HR POLICY
+Reimbursement and monthly payroll
+Document ID: sample-reimbursement-policy
+Assessment sample - not an approved company policy
+
+Purpose
+This sample document describes the reimbursement and payroll workflow in the HR salary management assessment. It contains no real employee data and is not an approved company policy.
+
+Submitting a claim
+Employees submit a reimbursement claim for their own payroll record. Each claim includes an amount in whole currency minor units and a receipt reference. New claims remain pending until reviewed by HR.
+
+HR approval
+Only HR can approve a reimbursement claim. A pending claim does not change net pay. Once approved, the reimbursement is included through the payroll calculation and saved in the monthly payslip.
+
+Monthly payroll
+Monthly gross is annual CTC divided by twelve. Unpaid leave deductions and other deductions entered by HR reduce pay. Paid leave does not reduce pay. Approved reimbursements increase net pay.
+
+Saved payslips and access
+Employees can view and download only their own payslips. HR manages payroll inputs in the HR workspace. Saving another payroll month does not rewrite an earlier monthly snapshot.
+
+Questions for the policy lookup
+Try these exact phrases in the HR policy search: pending claim, receipt reference, paid leave, or monthly snapshot. The current lookup matches text in saved documents and returns the document ID as its citation.

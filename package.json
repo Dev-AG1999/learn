@@ -11,7 +11,8 @@
     "test": "vitest run",
     "auth:user": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/auth-user.ts",
     "test:auth:http": "node --experimental-strip-types scripts/smoke-auth.ts",
-    "test:auth:browser": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/check-login-browser.ts"
+    "test:auth:browser": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/check-login-browser.ts",
+    "test:ui:browser": "node --experimental-strip-types scripts/check-ui-browser.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

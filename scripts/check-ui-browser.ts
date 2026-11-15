@@ -1,0 +1,297 @@
+import assert from "node:assert/strict"
+import { spawn, execFileSync } from "node:child_process"
+import { randomBytes } from "node:crypto"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs"
+import {
+  createServer as createHttpServer,
+  request as httpRequest,
+} from "node:http"
+import { createServer as createHttpsServer } from "node:https"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
+import type { Server } from "node:net"
+import { openTestBrowser } from "./browser-session.ts"
+import { hashPassword } from "../src/auth/password.ts"
+import { withAuth } from "../src/auth/repository.ts"
+import { withPayroll } from "../src/payroll-db.ts"
+
+async function listen(server: Server): Promise<number> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject)
+    server.listen(0, "127.0.0.1", resolve)
+  })
+  const address = server.address()
+  if (!address || typeof address === "string")
+    throw new Error("Cannot allocate test port.")
+  return address.port
+}
+async function stop(server?: Server) {
+  if (server?.listening) {
+    if ("closeAllConnections" in server)
+      (server as ReturnType<typeof createHttpServer>).closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+}
+
+const dir = mkdtempSync(join(tmpdir(), "paydesk-ui-fixture-"))
+const screenshots =
+  process.env.UI_SCREENSHOT_DIR ?? join(tmpdir(), "paydesk-ui-review")
+mkdirSync(screenshots, { recursive: true, mode: 0o700 })
+const originalDb = process.env.PAYROLL_DB
+process.env.PAYROLL_DB = join(dir, "payroll.sqlite")
+let server: ReturnType<typeof spawn> | undefined
+let proxy: ReturnType<typeof createHttpsServer> | undefined
+let browser: Awaited<ReturnType<typeof openTestBrowser>> | undefined
+try {
+  const portReservation = createHttpServer()
+  const port = await listen(portReservation)
+  await stop(portReservation)
+  const keyFile = join(dir, "test-key.pem"),
+    certFile = join(dir, "test-cert.pem")
+  execFileSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      keyFile,
+      "-out",
+      certFile,
+      "-days",
+      "1",
+      "-subj",
+      "/CN=localhost",
+    ],
+    { stdio: "ignore" }
+  )
+  proxy = createHttpsServer(
+    { key: readFileSync(keyFile), cert: readFileSync(certFile) },
+    (request, response) => {
+      const upstream = httpRequest(
+        {
+          hostname: "127.0.0.1",
+          port,
+          method: request.method,
+          path: request.url,
+          headers: {
+            ...request.headers,
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": request.headers.host,
+          },
+        },
+        (incoming) => {
+          response.writeHead(incoming.statusCode ?? 502, incoming.headers)
+          incoming.pipe(response)
+        }
+      )
+      upstream.on("error", () => {
+        response.writeHead(502)
+        response.end()
+      })
+      request.pipe(upstream)
+    }
+  )
+  const securePort = await listen(proxy)
+  const origin = `https://127.0.0.1:${securePort}`
+  const password = randomBytes(24).toString("hex")
+  const hash = await hashPassword(password)
+  await withPayroll(async (db) => {
+    await db.saveMonth({
+      employeeId: "test-a",
+      year: 2026,
+      month: 1,
+      annualCtcMinor: 12000000,
+      currency: "INR",
+      calendarDays: 31,
+      unpaidLeaveDays: 0,
+      otherDeductionsMinor: 0,
+      confirmed: true,
+      claims: [
+        {
+          id: "travel-claim",
+          amountMinor: 150000,
+          status: "pending",
+          receipt: "Travel receipt reference",
+        },
+      ],
+    })
+    await db.saveMonth({
+      employeeId: "test-b",
+      year: 2026,
+      month: 1,
+      annualCtcMinor: 24000000,
+      currency: "USD",
+      calendarDays: 31,
+      unpaidLeaveDays: 0,
+      otherDeductionsMinor: 0,
+      confirmed: true,
+      claims: [],
+    })
+  })
+  await withAuth((db) => {
+    db.provision("test-hr", hash, "hr", null)
+    db.provision("test-employee", hash, "employee", "test-a")
+  })
+  server = spawn(
+    process.execPath,
+    [
+      "node_modules/next/dist/bin/next",
+      "start",
+      "--hostname",
+      "127.0.0.1",
+      "--port",
+      String(port),
+    ],
+    {
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        AUTH_JWT_SECRET: randomBytes(32).toString("hex"),
+        APP_ORIGIN: origin,
+      },
+      stdio: "ignore",
+    }
+  )
+  let launchError: Error | undefined
+  server.on("error", (error) => {
+    launchError = error
+  })
+  let ready = false
+  for (let i = 0; i < 100; i++) {
+    if (launchError) throw launchError
+    if (server.exitCode !== null)
+      throw new Error("Production UI test server exited.")
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/login`)).status === 200) {
+        ready = true
+        break
+      }
+    } catch {
+      /* Wait for listener. */
+    }
+    await delay(100)
+  }
+  assert.ok(ready, "Production test server did not start.")
+  browser = await openTestBrowser(true) // Only this isolated profile trusts the ephemeral test certificate.
+  const noOverflow = async (page: string) => {
+    assert.equal(
+      await browser!.evaluate(
+        "document.documentElement.scrollWidth <= innerWidth + 1"
+      ),
+      true,
+      `${page} overflows the viewport.`
+    )
+  }
+  const capture = async (name: string, width: number) => {
+    await browser!.viewport(width, 1000)
+    await noOverflow(name)
+    await browser!.screenshot(join(screenshots, `${name}.png`))
+  }
+  const login = async (username: string, expectedPath: string) => {
+    await browser!.navigate(`${origin}/login`)
+    await browser!.evaluate(
+      `document.querySelector('[name="username"]').value=${JSON.stringify(username)}; document.querySelector('[name="password"]').value=${JSON.stringify(password)}; document.querySelector('.login-form').requestSubmit()`
+    )
+    await browser!.waitFor(
+      `location.pathname === ${JSON.stringify(expectedPath)} && !!document.querySelector('.workspace')`
+    )
+  }
+  await browser.navigate(`${origin}/login`)
+  await capture("login-desktop", 1440)
+  await capture("login-mobile", 390)
+  await login("test-hr", "/hr")
+  await browser.waitFor(
+    "document.body.innerText.includes('No payroll for this month')"
+  )
+  await capture("hr-empty", 1440)
+  await browser.navigate(`${origin}/hr?year=2026&month=1`)
+  await browser.waitFor("document.body.innerText.includes('₹10,000.00')")
+  assert.equal(
+    await browser.evaluate(
+      "document.querySelector('select[name=month]').selectedOptions[0].textContent"
+    ),
+    "January"
+  )
+  await capture("hr-desktop", 1440)
+  await capture("hr-tablet", 768)
+  await capture("hr-mobile", 390)
+  await browser.viewport(1440)
+  await browser.navigate(
+    `${origin}/hr/salary?employeeId=test-a&year=2026&month=1`
+  )
+  await browser.waitFor("!!document.querySelector('.salary-editor')")
+  await capture("salary-desktop", 1440)
+  await capture("salary-mobile", 390)
+  await browser.evaluate(
+    "document.querySelector('.salary-editor [name=otherDeductionsMinor]').value='900'; document.querySelector('.salary-editor [name=confirmed]').checked=true; document.querySelector('.salary-editor').requestSubmit()"
+  )
+  await browser.waitFor("document.body.innerText.includes('Salary saved.')")
+  assert.equal(
+    (await withPayroll((db) => db.get("test-a", 2026, 1)))
+      ?.otherDeductionsMinor,
+    900
+  )
+  await browser.navigate(`${origin}/hr?year=2026&month=1`)
+  await browser.evaluate(
+    "document.querySelector('.claim-row [name=confirmed]').checked=true; document.querySelector('.claim-row').requestSubmit()"
+  )
+  await browser.waitFor(
+    "document.body.innerText.includes('Claim approved and')"
+  )
+  assert.equal(
+    (await withPayroll((db) => db.getClaims("test-a", 2026, 1)))[0]?.status,
+    "approved"
+  )
+  await browser.evaluate(
+    "document.querySelector('.sidebar-account form').requestSubmit()"
+  )
+  await browser.waitFor(
+    "location.pathname === '/login' && !!document.querySelector('.login-form')"
+  )
+  await login("test-employee", "/employee/test-a")
+  assert.equal(
+    await browser.evaluate("!!document.querySelector('a[href^=\"/hr\"]')"),
+    false
+  )
+  await browser.navigate(`${origin}/employee/test-a?year=2026&month=1`)
+  await capture("employee-desktop", 1440)
+  await capture("employee-mobile", 390)
+  await browser.navigate(`${origin}/employee/test-a?year=2026&month=2`)
+  await browser.waitFor(
+    "document.body.innerText.includes('No payslip for this month')"
+  )
+  assert.equal(
+    await browser.evaluate(
+      "Array.from(document.querySelectorAll('a')).some(a => a.textContent.includes('Download PDF'))"
+    ),
+    false
+  )
+  console.log(
+    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
+  )
+} catch (error) {
+  if (browser) {
+    await browser
+      .screenshot(join(screenshots, "failure.png"))
+      .catch(() => undefined)
+    console.error(
+      "UI test stopped at:",
+      await browser.evaluate("location.href").catch(() => "unavailable")
+    )
+  }
+  throw error
+} finally {
+  await browser?.close()
+  if (server && server.exitCode === null) {
+    server.kill("SIGTERM")
+    await new Promise<void>((resolve) => server!.once("exit", () => resolve()))
+  }
+  await stop(proxy)
+  rmSync(dir, { recursive: true, force: true })
+  if (originalDb === undefined) delete process.env.PAYROLL_DB
+  else process.env.PAYROLL_DB = originalDb
+}

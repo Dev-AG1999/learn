@@ -1,0 +1,25 @@
+EMPLOYEE SALARY SHEET - PROPOSED IMPORT TEMPLATE
+
+These files are synthetic assessment examples, not existing employee records.
+The app does not yet have a CSV/Excel upload endpoint. Do not paste CSV into
+HR policy text: that saves a policy document, not employee salary records.
+
+Each row represents one employee and one payroll month.
+- employeeId: unique employee identifier.
+- year: payroll year, for example 2026.
+- month: 1 = January through 12 = December; 11 means November.
+- annualCtcMinor: annual CTC in integer currency minor units.
+- currency: supported ISO currency code, for example INR.
+- unpaidLeaveDays: whole unpaid days within the selected calendar month.
+- otherDeductionsMinor: deductions for this month in integer minor units.
+
+For INR, 100 minor units = 1 rupee.
+DEMO-001 has annual CTC of INR 12,00,000, represented as 120000000 paise.
+DEMO-002 has annual CTC of INR 9,60,000, represented as 96000000 paise.
+DEMO-003 has annual CTC of INR 6,00,000, represented as 60000000 paise.
+Amounts are annual CTC, not monthly salary. Monthly pay is calculated by the app.
+No reimbursement claims or login passwords are included in this template.
+
+The proposed import flow is: choose sheet, validate, review rows/errors,
+confirm, save employees and monthly payslips, refresh the dashboard.
+Employee salary records and employee login accounts are separate concerns.

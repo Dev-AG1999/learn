@@ -132,3 +132,15 @@ regression check submits a random nonexistent account, verifies that Origin is
 preserved, and expects the normal invalid-credentials screen. It does not use
 your account, password, or browser profile. Set `CHROME_PATH` if Chrome is not in
 the default macOS location. The diagnostic accepts only loopback APP_ORIGINs.
+
+The UI redesign preserves the same authorization checks. The shared navigation
+shows each account's permitted workspace, and `/` routes directly to it; links
+are not used as a substitute for server authorization. Mutating payroll routes
+return relative redirect locations so HTTPS is preserved behind a reverse proxy.
+For a deployment proxy, forward the original Host and X-Forwarded-Proto correctly.
+
+`npm run test:ui:browser` tests the redesigned UI on an isolated production server
+and local HTTPS proxy with synthetic data. Only its fresh Chrome profile ignores
+the temporary certificate error; it does not relax application origin checks,
+production cookies, or your normal browser's TLS settings. The shared Chrome
+harness is also used by the native login-form regression test.

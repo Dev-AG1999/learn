@@ -5,16 +5,26 @@ import { readPeriod } from "../../../../src/period.ts"
 
 export async function POST(
   request: Request,
-  context: { params: Promise<{ employeeId: string }> },
+  context: { params: Promise<{ employeeId: string }> }
 ) {
   const { employeeId } = await context.params
-  try { await requireRequest(request, "employee", employeeId) } catch (error) { return authFailure(error) }
+  try {
+    await requireRequest(request, "employee", employeeId)
+  } catch (error) {
+    return authFailure(error)
+  }
   const form = await request.formData()
-  const period = readPeriod(String(form.get("year") ?? ""), String(form.get("month") ?? ""))
+  const period = readPeriod(
+    String(form.get("year") ?? ""),
+    String(form.get("month") ?? "")
+  )
   const back = new URL(`/employee/${employeeId}`, request.url)
   if (!period) {
     back.searchParams.set("failure", "Year and month are required.")
-    return new Response(null, { status: 303, headers: { Location: back.toString() } })
+    return new Response(null, {
+      status: 303,
+      headers: { Location: `${back.pathname}${back.search}` },
+    })
   }
   back.searchParams.set("year", String(period.year))
   back.searchParams.set("month", String(period.month))
@@ -26,8 +36,13 @@ export async function POST(
       amountMinor: Number(form.get("amountMinor")),
       receipt: String(form.get("receipt") ?? ""),
       confirmed: form.get("confirmed") === "yes",
-    }),
+    })
   )
-  if (!result.ok) back.searchParams.set("failure", result.failures[0] ?? "receipt")
-  return new Response(null, { status: 303, headers: { Location: back.toString() } })
+  if (!result.ok)
+    back.searchParams.set("failure", result.failures[0] ?? "receipt")
+  else back.searchParams.set("notice", "claim-submitted")
+  return new Response(null, {
+    status: 303,
+    headers: { Location: `${back.pathname}${back.search}` },
+  })
 }

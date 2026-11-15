@@ -1,36 +1,188 @@
-import { AccountNav } from "../../components/account-nav.tsx"
 import { requirePage } from "../../../src/auth/next.ts"
 import { withPayroll } from "../../../src/payroll-db.ts"
 import { readSalaryEditor } from "../../../src/salary-editor.ts"
 import { readPeriod } from "../../../src/period.ts"
+import {
+  currentPeriod,
+  monthNames,
+  periodLabel,
+  periodQuery,
+} from "../../../src/presentation.ts"
+import {
+  Workspace,
+  PageHeading,
+  EmptyState,
+} from "../../components/workspace.tsx"
+import { PayslipSummary } from "../../components/payslip-summary.tsx"
+import { Icon } from "../../components/ui-icon.tsx"
 import { SalaryEditor } from "./editor.tsx"
-import "./salary.css"
 
 export const dynamic = "force-dynamic"
 
-export default async function SalaryPage({ searchParams }: { searchParams: Promise<{ employeeId?: string; year?: string; month?: string }> }) {
-  await requirePage("hr")
+export default async function SalaryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ employeeId?: string; year?: string; month?: string }>
+}) {
+  const principal = await requirePage("hr")
   const query = await searchParams
-  const period = readPeriod(query.year, query.month)
-  const valid = period && period.year >= 1900 && period.year <= 9999 && period.month >= 1 && period.month <= 12
-  const data = valid && query.employeeId ? await withPayroll(db => readSalaryEditor(db, query.employeeId!, period.year, period.month)) : null
-  return <main className="salary-shell">
-    <AccountNav />
-    <a href={valid ? `/hr?year=${period.year}&month=${period.month}` : "/"}>← HR dashboard</a>
-    <header><p>HR · PAYROLL MANAGEMENT</p><h1>Edit employee salary</h1><p>Review payroll inputs and save a monthly payslip.</p></header>
-    <form method="get" className="salary-card salary-lookup">
-      <label>Employee ID<input name="employeeId" defaultValue={query.employeeId} required placeholder="syn-00001" /></label>
-      <label>Year<input name="year" type="number" min="1900" max="9999" defaultValue={query.year} required /></label>
-      <label>Month<input name="month" type="number" min="1" max="12" defaultValue={query.month} required /></label>
-      <button>Load payroll</button>
-    </form>
-    {query.employeeId && !data && <p role="alert">Employee not found or payroll period is invalid.</p>}
-    {data && valid && <>
-      <h2>{query.employeeId} · {period.year}-{String(period.month).padStart(2, "0")}</h2>
-      <section className="salary-card" aria-label="Stored payslip"><h2>Saved monthly snapshot</h2>
-        {data.payslip ? <dl className="salary-grid">{Object.entries({ "Monthly gross": data.payslip.monthlyGrossMinor, "Unpaid deduction": data.payslip.unpaidDeductionMinor, "Other deductions": data.payslip.otherDeductionsMinor, "Approved reimbursements": data.payslip.approvedReimbursementsMinor, "Net pay": data.payslip.netMinor }).map(([label, amount]) => <div key={label}><dt>{label}</dt><dd>{data.payslip!.currency} {amount.toLocaleString("en-IN")} minor units</dd></div>)}</dl> : <p>No payslip exists for this month. Saving will create one.</p>}
+  const requested =
+    query.year === undefined && query.month === undefined
+      ? currentPeriod()
+      : readPeriod(query.year, query.month)
+  const period = requested ?? currentPeriod()
+  const employeeId = query.employeeId?.trim() ?? ""
+  const data =
+    requested && employeeId
+      ? await withPayroll((db) =>
+          readSalaryEditor(db, employeeId, period.year, period.month)
+        )
+      : null
+  return (
+    <Workspace principal={principal} period={period} active="salary">
+      <PageHeading
+        eyebrow="PAYROLL MANAGEMENT"
+        title="Employee salary"
+        description="Review payroll inputs, make an update, and save with confidence."
+      >
+        <a
+          className="button button-secondary"
+          href={`/hr?${periodQuery(period)}`}
+        >
+          Back to overview
+        </a>
+      </PageHeading>
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Find employee payroll</h2>
+            <p>Choose an employee and the month you want to work on.</p>
+          </div>
+          <Icon name="search" />
+        </div>
+        <form method="get" className="panel-body salary-lookup">
+          <label>
+            Employee ID
+            <input
+              name="employeeId"
+              defaultValue={employeeId}
+              required
+              placeholder="Enter employee ID"
+            />
+          </label>
+          <label>
+            Payroll month
+            <select name="month" defaultValue={period.month}>
+              {monthNames.map((name, index) => (
+                <option key={name} value={index + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Year
+            <input
+              name="year"
+              type="number"
+              min="1900"
+              max="9999"
+              defaultValue={period.year}
+              required
+            />
+          </label>
+          <button className="button button-primary">
+            <Icon name="search" size={17} />
+            Load payroll
+          </button>
+        </form>
       </section>
-      <SalaryEditor key={`${query.employeeId}-${period.year}-${period.month}`} employeeId={query.employeeId!} year={period.year} month={period.month} version={data.version} annualCtcMinor={data.inputs.annualCtcMinor} currency={data.payslip?.currency ?? data.inputs.currency} unpaidLeaveDays={data.leave?.unpaidLeaveDays ?? 0} otherDeductionsMinor={data.payslip?.otherDeductionsMinor ?? 0} />
-    </>}
-  </main>
+      {!requested && (
+        <div className="notice notice-error" role="alert">
+          Choose a valid month and a year between 1900 and 9999.
+        </div>
+      )}
+      {employeeId && requested && !data && (
+        <div className="notice notice-error" role="alert">
+          Employee not found. Check the employee ID and try again.
+        </div>
+      )}
+      {data && requested ? (
+        <>
+          <div className="employee-context">
+            <span className="employee-avatar">
+              {employeeId.slice(0, 2).toUpperCase()}
+            </span>
+            <div>
+              <h2>{employeeId}</h2>
+              <p>
+                {periodLabel(period)} <span>·</span> {data.inputs.currency}{" "}
+                payroll
+              </p>
+            </div>
+            <span
+              className={`badge ${data.payslip ? "badge-green" : "badge-neutral"}`}
+            >
+              {data.payslip ? "Payslip on file" : "New monthly payslip"}
+            </span>
+          </div>
+          <div className="editor-columns">
+            <SalaryEditor
+              key={`${employeeId}-${period.year}-${period.month}`}
+              employeeId={employeeId}
+              year={period.year}
+              month={period.month}
+              version={data.version}
+              annualCtcMinor={data.inputs.annualCtcMinor}
+              currency={data.payslip?.currency ?? data.inputs.currency}
+              unpaidLeaveDays={data.leave?.unpaidLeaveDays ?? 0}
+              otherDeductionsMinor={data.payslip?.otherDeductionsMinor ?? 0}
+            />
+            <aside className="editor-summary">
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Saved payslip</h2>
+                    <p>
+                      {periodLabel(period)} ·{" "}
+                      {data.payslip?.currency ?? data.inputs.currency}
+                    </p>
+                  </div>
+                  <Icon name="file" />
+                </div>
+                {data.payslip ? (
+                  <div className="panel-body">
+                    <PayslipSummary slip={data.payslip} />
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No saved payslip yet"
+                    description="Confirm the payroll inputs to create this month's payslip."
+                  />
+                )}
+              </section>
+              <div className="info-note">
+                <Icon name="lock" size={19} />
+                <p>
+                  <strong>A deliberate save.</strong> Your changes affect this
+                  month only. Existing claims stay on file, and other months
+                  keep their saved payslips.
+                </p>
+              </div>
+            </aside>
+          </div>
+        </>
+      ) : (
+        !employeeId && (
+          <section className="panel">
+            <EmptyState
+              icon="users"
+              title="Start with an employee"
+              description="Enter an existing employee ID above to review their monthly pay. Nothing changes until you confirm and save."
+            />
+          </section>
+        )
+      )}
+    </Workspace>
+  )
 }
