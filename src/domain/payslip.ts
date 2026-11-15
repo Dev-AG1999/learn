@@ -27,13 +27,22 @@ function assertMinorUnit(value: number): void {
   }
 }
 
-function exactQuotient(numerator: number, denominator: number): number {
-  assertMinorUnit(numerator)
-  assertMinorUnit(denominator)
-  if (denominator === 0 || numerator % denominator !== 0) {
+export function roundHalfAwayFromZero(value: number): number {
+  if (!Number.isFinite(value)) {
     throw new Error("insufficient context")
   }
-  return numerator / denominator
+  const negative = value < 0
+  const rounded = Math.floor(Math.abs(value) + 0.5)
+  return negative ? -rounded : rounded
+}
+
+function roundedQuotient(numerator: number, denominator: number): number {
+  assertMinorUnit(numerator)
+  assertMinorUnit(denominator)
+  if (denominator === 0) {
+    throw new Error("insufficient context")
+  }
+  return roundHalfAwayFromZero(numerator / denominator)
 }
 
 export function computePayslip(input: PayslipInput): Payslip {
@@ -43,11 +52,13 @@ export function computePayslip(input: PayslipInput): Payslip {
   assertMinorUnit(input.otherDeductionsMinor)
   assertMinorUnit(input.approvedReimbursementsMinor)
 
-  const monthlyGrossMinor = exactQuotient(input.annualCtcMinor, 12)
+  const monthlyGrossMinor = roundedQuotient(input.annualCtcMinor, 12)
   const unpaidDeductionMinor =
     input.unpaidLeaveDays === 0
       ? 0
-      : input.unpaidLeaveDays * exactQuotient(monthlyGrossMinor, input.calendarDays)
+      : roundHalfAwayFromZero(
+          input.unpaidLeaveDays * roundedQuotient(monthlyGrossMinor, input.calendarDays),
+        )
   const netMinor =
     monthlyGrossMinor -
     unpaidDeductionMinor -

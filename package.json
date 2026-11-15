@@ -1,0 +1,14 @@
+{
+  "name": "learn",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
+  }
+}

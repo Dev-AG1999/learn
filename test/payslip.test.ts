@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
-import { test } from "node:test"
-import { computePayslip, validatePayrollInput } from "../src/domain/payslip.ts"
+import { test } from "vitest"
+import {
+  computePayslip,
+  roundHalfAwayFromZero,
+  validatePayrollInput,
+} from "../src/domain/payslip.ts"
 
 const exactMonth = {
   annualCtcMinor: 1_440_000,
@@ -72,23 +76,58 @@ test("a non-integer minor unit is not a payslip result", () => {
   )
 })
 
-test("a CTC that is not divisible by 12 is not rounded into a payslip", () => {
-  assert.throws(
-    () => computePayslip({ ...exactMonth, annualCtcMinor: 100 }),
-    /insufficient context/,
-  )
+test("PAY-12 monthly gross rounds 0.5 away from zero", () => {
+  const slip = computePayslip({ ...exactMonth, annualCtcMinor: 6 })
+  assert.equal(slip.monthlyGrossMinor, 1)
 })
 
-test("an unpaid day rate that is not an integer minor unit is not rounded", () => {
-  assert.throws(
-    () =>
-      computePayslip({
-        ...exactMonth,
-        calendarDays: 31,
-        unpaidLeaveDays: 1,
-      }),
-    /insufficient context/,
-  )
+test("PAY-13 monthly gross rounds 1.5 away from zero", () => {
+  const slip = computePayslip({ ...exactMonth, annualCtcMinor: 18 })
+  assert.equal(slip.monthlyGrossMinor, 2)
+})
+
+test("PAY-14 monthly gross below half rounds toward zero", () => {
+  const slip = computePayslip({ ...exactMonth, annualCtcMinor: 100 })
+  assert.equal(slip.monthlyGrossMinor, 8)
+})
+
+test("PAY-15 daily rate rounds half away from zero", () => {
+  const slip = computePayslip({
+    ...exactMonth,
+    annualCtcMinor: 120,
+    calendarDays: 4,
+    unpaidLeaveDays: 1,
+  })
+  assert.equal(slip.monthlyGrossMinor, 10)
+  assert.equal(slip.unpaidDeductionMinor, 3)
+})
+
+test("PAY-16 unpaid deduction uses the rounded daily rate", () => {
+  const slip = computePayslip({
+    ...exactMonth,
+    annualCtcMinor: 120,
+    calendarDays: 4,
+    unpaidLeaveDays: 2,
+    otherDeductionsMinor: 0,
+    approvedReimbursementsMinor: 0,
+  })
+  assert.equal(slip.unpaidDeductionMinor, 6)
+  assert.equal(slip.netMinor, slip.monthlyGrossMinor - 6)
+})
+
+test("PAY-17 half rounds away from zero for a negative value", () => {
+  assert.equal(roundHalfAwayFromZero(-1.5), -2)
+})
+
+test("one unpaid day in a 31-day month uses the rounded daily rate", () => {
+  const slip = computePayslip({
+    ...exactMonth,
+    calendarDays: 31,
+    unpaidLeaveDays: 1,
+  })
+  assert.equal(slip.monthlyGrossMinor, 120_000)
+  assert.equal(slip.unpaidDeductionMinor, 3_871)
+  assert.equal(slip.netMinor, 116_129)
 })
 
 test("unpaid days above the calendar days fail validation", () => {

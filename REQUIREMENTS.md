@@ -20,6 +20,8 @@ Integer minor units and an ISO currency. The payslip function is the only code t
 - Net = monthly gross − unpaid deduction − other deductions + approved reimbursements
 - Other deductions are an amount HR enters
 
+Each division rounds half away from zero to the nearest minor unit before the next step: monthly gross, then the daily rate, then the unpaid deduction. A tie at `.5` rounds away from zero, including a negative value. Net uses those rounded terms.
+
 A claim changes net pay only after HR approval, and only through that function. Tax, PF, and ESI are not part of pay.
 
 On save and on sheet import, validate required fields, unpaid days ≤ calendar days, currency, claim amount, and receipt. Show failures to HR and commit only after confirmation. One employee’s payslip, leave days, and claims commit together. No salary amounts in logs.
@@ -45,9 +47,8 @@ Tests for the formula, employee isolation, and validation stay fast and local. O
 
 These are named, and the rule for them is not:
 
-- Rounding when annual CTC / 12 or monthly gross / calendar days is not an integer of minor units
 - The required-field list, the currency check, claim-amount rules, and receipt rules
 - Sheet, document, and receipt formats
 - How HR access and employee login authenticate
 - The org pay questions
-- Employee-isolation storage, which has no schema yet
+- Column names beyond the employee, the monthly payslip snapshot, leave days, and claims
