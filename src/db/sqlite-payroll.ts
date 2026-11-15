@@ -58,11 +58,50 @@ export type SaveMonthResult =
   | { ok: true; payslip: StoredPayslip }
   | { ok: false; failures: string[] }
 
+export type PendingClaimInput = {
+  employeeId: string
+  year: number
+  month: number
+  claimId: string
+  amountMinor: number
+  receipt: string
+  confirmed: boolean
+}
+
+export type ApproveClaimInput = {
+  claimId: string
+  confirmed: boolean
+}
+
+export type PendingClaim = {
+  id: string
+  employeeId: string
+  year: number
+  month: number
+  amountMinor: number
+  receipt: string
+}
+
+export type PendingClaimPage = {
+  claims: PendingClaim[]
+  nextCursor: string | null
+}
+
+export type CitedAnswer = {
+  citation: string
+  answer: string
+}
+
 export type PayrollRepository = {
   get(employeeId: string, year: number, month: number): Promise<StoredPayslip | null>
   getLeave(employeeId: string, year: number, month: number): Promise<LeaveDays | null>
   getClaims(employeeId: string, year: number, month: number): Promise<StoredClaim[]>
   saveMonth(input: SaveMonthInput): Promise<SaveMonthResult>
+  submitPendingClaim(input: PendingClaimInput): Promise<SaveMonthResult>
+  approveClaim(input: ApproveClaimInput): Promise<SaveMonthResult>
+  listPendingClaims(limit: number, cursor: string | null): Promise<PendingClaimPage>
+  uploadDocument(input: { documentId: string; body: string }): Promise<void>
+  answerFromDocuments(question: string): Promise<CitedAnswer | null>
   orgTotals(year: number, month: number): Promise<OrgTotal[]>
   listEmployeeIds(limit: number, cursor: string | null): Promise<EmployeePage>
   close(): void
@@ -125,6 +164,12 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       ON payslips (year, month, currency, employee_id);
     CREATE INDEX IF NOT EXISTS idx_claims_employee_month
       ON claims (employee_id, year, month);
+    CREATE INDEX IF NOT EXISTS idx_claims_pending
+      ON claims (status, claim_id);
+    CREATE TABLE IF NOT EXISTS documents (
+      document_id TEXT PRIMARY KEY,
+      body TEXT NOT NULL
+    );
   `)
 
   const getPayslip = db.prepare(`
@@ -190,6 +235,35 @@ export function openPayrollDatabase(path: string): PayrollRepository {
     WHERE employee_id > ?
     ORDER BY employee_id
     LIMIT ?
+  `)
+  const getEmployee = db.prepare(`
+    SELECT annual_ctc_minor, currency FROM employees WHERE employee_id = ?
+  `)
+  const getClaimById = db.prepare(`
+    SELECT claim_id, employee_id, year, month, amount_minor, status, receipt
+    FROM claims WHERE claim_id = ?
+  `)
+  const approvedTotal = db.prepare(`
+    SELECT COALESCE(SUM(amount_minor), 0) AS total
+    FROM claims
+    WHERE employee_id = ? AND year = ? AND month = ? AND status = 'approved'
+  `)
+  const pendingPage = db.prepare(`
+    SELECT claim_id, employee_id, year, month, amount_minor, receipt
+    FROM claims
+    WHERE status = 'pending' AND claim_id > ?
+    ORDER BY claim_id
+    LIMIT ?
+  `)
+  const citedDocument = db.prepare(`
+    SELECT document_id, body FROM documents
+    WHERE instr(body, ?) > 0
+    ORDER BY document_id
+    LIMIT 1
+  `)
+  const insertDocument = db.prepare(`
+    INSERT INTO documents (document_id, body) VALUES (?, ?)
+    ON CONFLICT (document_id) DO UPDATE SET body = excluded.body
   `)
 
   return {
@@ -315,6 +389,120 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       }
 
       return { ok: true, payslip: stored }
+    },
+
+    async submitPendingClaim(input) {
+      if (!input.confirmed) {
+        return { ok: false, failures: ["commit only after confirmation"] }
+      }
+      if (input.receipt.trim() === "") return { ok: false, failures: ["receipt"] }
+      if (!Number.isSafeInteger(input.amountMinor)) return { ok: false, failures: ["claim amount"] }
+      const payslip = await this.get(input.employeeId, input.year, input.month)
+      if (!payslip) return { ok: false, failures: ["No payslip"] }
+      insertClaim.run(
+        input.claimId,
+        input.employeeId,
+        input.year,
+        input.month,
+        input.amountMinor,
+        "pending",
+        input.receipt,
+      )
+      return { ok: true, payslip }
+    },
+
+    async approveClaim(input) {
+      if (!input.confirmed) {
+        return { ok: false, failures: ["commit only after confirmation"] }
+      }
+      const claim = getClaimById.get(input.claimId) as
+        | {
+            claim_id: string
+            employee_id: string
+            year: number
+            month: number
+            amount_minor: number
+            status: ClaimStatus
+            receipt: string
+          }
+        | undefined
+      if (!claim) return { ok: false, failures: ["No payslip"] }
+      const employee = getEmployee.get(claim.employee_id) as
+        | { annual_ctc_minor: number; currency: string }
+        | undefined
+      const leave = await this.getLeave(claim.employee_id, claim.year, claim.month)
+      const current = await this.get(claim.employee_id, claim.year, claim.month)
+      if (!employee || !leave || !current) return { ok: false, failures: ["No payslip"] }
+
+      db.exec("BEGIN")
+      try {
+        if (claim.status === "pending") {
+          db.prepare(`UPDATE claims SET status = 'approved' WHERE claim_id = ?`).run(input.claimId)
+        }
+        const total = approvedTotal.get(claim.employee_id, claim.year, claim.month) as { total: number }
+        const payslip = computePayslip({
+          annualCtcMinor: employee.annual_ctc_minor,
+          currency: employee.currency,
+          calendarDays: leave.calendarDays,
+          unpaidLeaveDays: leave.unpaidLeaveDays,
+          otherDeductionsMinor: current.otherDeductionsMinor,
+          approvedReimbursementsMinor: total.total,
+        })
+        upsertPayslip.run(
+          claim.employee_id,
+          claim.year,
+          claim.month,
+          payslip.currency,
+          payslip.monthlyGrossMinor,
+          payslip.unpaidDeductionMinor,
+          payslip.otherDeductionsMinor,
+          payslip.approvedReimbursementsMinor,
+          payslip.netMinor,
+        )
+        db.exec("COMMIT")
+        return {
+          ok: true as const,
+          payslip: { employeeId: claim.employee_id, year: claim.year, month: claim.month, ...payslip },
+        }
+      } catch (error) {
+        db.exec("ROLLBACK")
+        throw error
+      }
+    },
+
+    async listPendingClaims(limit, cursor) {
+      const rows = pendingPage.all(cursor ?? "", limit + 1) as Array<{
+        claim_id: string
+        employee_id: string
+        year: number
+        month: number
+        amount_minor: number
+        receipt: string
+      }>
+      const page = rows.slice(0, limit)
+      return {
+        claims: page.map((row) => ({
+          id: row.claim_id,
+          employeeId: row.employee_id,
+          year: row.year,
+          month: row.month,
+          amountMinor: row.amount_minor,
+          receipt: row.receipt,
+        })),
+        nextCursor: rows.length > limit ? page[page.length - 1].claim_id : null,
+      }
+    },
+
+    async uploadDocument(input) {
+      insertDocument.run(input.documentId, input.body)
+    },
+
+    async answerFromDocuments(question) {
+      const trimmed = question.trim()
+      if (trimmed === "") return null
+      const row = citedDocument.get(trimmed) as { document_id: string; body: string } | undefined
+      if (!row) return null
+      return { citation: row.document_id, answer: row.body }
     },
 
     async orgTotals(year, month) {
