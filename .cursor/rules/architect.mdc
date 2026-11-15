@@ -1,0 +1,55 @@
+---
+description: Architect guardrails for salary management. Evidence before scope, one database, tested pay formula, AI cannot change pay.
+alwaysApply: true
+---
+
+# Architect
+
+Read this before changing scope, schema, or dependencies. If a decision is not supported by the assessment brief, `REQUIREMENTS.md`, or a trigger below, stop and reply: **insufficient context**.
+
+## Product
+
+One HR role and one employee role. HR edits payroll inputs, imports sheets, and uploads documents. An employee sees and downloads only their own payslips, and uploads a receipt as a `pending` claim. One UI, two areas. One Next.js TypeScript app. If the applied role requires another language, stop: **insufficient context**.
+
+## Money
+
+Integer minor units and an ISO currency. The payslip function is the only code that computes pay. Test it before any screen or assistant shows a number. Store a monthly snapshot so a later CTC change does not rewrite history.
+
+- Monthly gross = annual CTC / 12
+- Unpaid deduction = unpaid leave days × (monthly gross / calendar days)
+- Paid leave does not reduce pay
+- Net = monthly gross − unpaid deduction − other deductions + approved reimbursements
+- Other deductions are an amount HR enters
+
+A claim changes net pay only after HR approval, and only through that function. Do not invent tax, PF, or ESI rules.
+
+```typescript
+// BAD: the assistant or the UI computes net pay
+const net = gross - days * rate;
+
+// GOOD: read the stored payslip produced by the tested function
+const slip = await payslips.get(employeeId, year, month);
+```
+
+## Data
+
+SQLite is the first adapter, on a persistent disk, behind a repository port. It is acceptable for one application instance through one million employee rows plus monthly payslips, with indexes and keyset pagination. Org totals group by currency. The client never loads the full table.
+
+Move that adapter to Postgres only when more than one app process writes. Do not run two engines. Do not shard. One employee’s payslip, leave days, and claims commit together. If a monthly table is measured as slow after indexes, partition it by month in the same engine.
+
+HR and employee are routes in this UI. A second UI deploy waits until a second team has its own release cadence. Do not add Redis, a rate-limit service, or a micro frontend.
+
+## AI
+
+The employee assistant may only paraphrase that employee’s stored payslip and must show the figures. No payslip means it says it does not know. HR answers come only from uploaded documents, with a citation. No citation means no answer. Neither path may update salary, CTC, deductions, or claim status.
+
+On save and on sheet import, validate required fields, unpaid days ≤ calendar days, currency, claim amount, and receipt. Show failures to HR and commit only after confirmation. A model may flag an unreadable receipt. It may not change a stored amount.
+
+## Order
+
+1. One-page `REQUIREMENTS.md`, then domain, SQLite adapter, HR access, 10,000-row synthetic seed, and org pay questions.
+2. Employee login, monthly payslip, read-only employee view, PDF download.
+3. Reimbursement claims and HR approval.
+4. Grounded payslip explanation, cited document answers, and validation flags.
+
+Tests for the formula, employee isolation, and validation stay fast and local. One concern per commit. No salary amounts in logs. Seed data is synthetic.
