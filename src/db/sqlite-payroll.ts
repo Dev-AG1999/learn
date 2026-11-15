@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+import { validateSalary } from "../salary-validation.ts"
 import { DatabaseSync } from "node:sqlite"
 import { computePayslip, validatePayrollInput, type Payslip } from "../domain/payslip.ts"
 
@@ -21,6 +23,7 @@ export type SaveMonthInput = {
   otherDeductionsMinor: number
   claims: readonly ClaimInput[]
   confirmed: boolean
+  expectedVersion?: string
 }
 
 export type StoredPayslip = Payslip & {
@@ -92,7 +95,11 @@ export type CitedAnswer = {
   answer: string
 }
 
+export type SalaryInputs = { annualCtcMinor: number; currency: string }
+
 export type PayrollRepository = {
+  getSalaryVersion(employeeId: string, year: number, month: number): Promise<string>
+  getSalaryInputs(employeeId: string, year: number, month: number): Promise<SalaryInputs | null>
   get(employeeId: string, year: number, month: number): Promise<StoredPayslip | null>
   getLeave(employeeId: string, year: number, month: number): Promise<LeaveDays | null>
   getClaims(employeeId: string, year: number, month: number): Promise<StoredClaim[]>
@@ -166,6 +173,11 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       ON claims (employee_id, year, month);
     CREATE INDEX IF NOT EXISTS idx_claims_pending
       ON claims (status, claim_id);
+    CREATE TABLE IF NOT EXISTS salary_inputs (
+      employee_id TEXT NOT NULL REFERENCES employees(employee_id),
+      year INTEGER NOT NULL, month INTEGER NOT NULL, annual_ctc_minor INTEGER NOT NULL, currency TEXT NOT NULL,
+      PRIMARY KEY (employee_id, year, month)
+    );
     CREATE TABLE IF NOT EXISTS documents (
       document_id TEXT PRIMARY KEY,
       body TEXT NOT NULL
@@ -266,7 +278,20 @@ export function openPayrollDatabase(path: string): PayrollRepository {
     ON CONFLICT (document_id) DO UPDATE SET body = excluded.body
   `)
 
+  const monthlyInputs = db.prepare("SELECT annual_ctc_minor, currency FROM salary_inputs WHERE employee_id = ? AND year = ? AND month = ?")
+  const saveInputs = db.prepare("INSERT INTO salary_inputs VALUES (?, ?, ?, ?, ?) ON CONFLICT(employee_id, year, month) DO UPDATE SET annual_ctc_minor = excluded.annual_ctc_minor, currency = excluded.currency")
+  function salaryVersion(employeeId: string, year: number, month: number): string {
+    const state = [monthlyInputs.get(employeeId, year, month) ?? getEmployee.get(employeeId),
+      getPayslip.get(employeeId, year, month), getLeaveRow.get(employeeId, year, month),
+      getClaimRows.all(employeeId, year, month)]
+    return createHash("sha256").update(JSON.stringify(state)).digest("hex")
+  }
   return {
+    async getSalaryVersion(employeeId, year, month) { return salaryVersion(employeeId, year, month) },
+    async getSalaryInputs(employeeId, year, month) {
+      const row = (monthlyInputs.get(employeeId, year, month) ?? getEmployee.get(employeeId)) as { annual_ctc_minor: number; currency: string } | undefined
+      return row ? { annualCtcMinor: row.annual_ctc_minor, currency: row.currency } : null
+    },
     async get(employeeId, year, month) {
       const row = getPayslip.get(employeeId, year, month) as PayslipRow | undefined
       if (!row) return null
@@ -328,7 +353,10 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       if (!input.confirmed) {
         return { ok: false, failures: ["commit only after confirmation"] }
       }
-      const failures = validatePayrollInput(input)
+      if (input.expectedVersion !== undefined && input.expectedVersion !== salaryVersion(input.employeeId, input.year, input.month)) {
+        return { ok: false, failures: ["Payroll changed since this form was opened. Reload before editing."] }
+      }
+      const failures = [...validatePayrollInput(input), ...validateSalary(input)]
       if (failures.length > 0) return { ok: false, failures }
 
       const approvedReimbursementsMinor = input.claims
@@ -342,6 +370,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
         otherDeductionsMinor: input.otherDeductionsMinor,
         approvedReimbursementsMinor,
       })
+      if (!Object.values(payslip).every(value => typeof value === "string" || Number.isSafeInteger(value))) return { ok: false, failures: ["Computed pay exceeds the safe integer range."] }
       const stored: StoredPayslip = {
         employeeId: input.employeeId,
         year: input.year,
@@ -352,6 +381,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       db.exec("BEGIN")
       try {
         upsertEmployee.run(input.employeeId, input.annualCtcMinor, input.currency)
+        saveInputs.run(input.employeeId, input.year, input.month, input.annualCtcMinor, input.currency)
         upsertPayslip.run(
           input.employeeId,
           input.year,
@@ -427,7 +457,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
           }
         | undefined
       if (!claim) return { ok: false, failures: ["No payslip"] }
-      const employee = getEmployee.get(claim.employee_id) as
+      const employee = (monthlyInputs.get(claim.employee_id, claim.year, claim.month) ?? getEmployee.get(claim.employee_id)) as
         | { annual_ctc_minor: number; currency: string }
         | undefined
       const leave = await this.getLeave(claim.employee_id, claim.year, claim.month)

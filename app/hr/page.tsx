@@ -27,6 +27,7 @@ export default async function HrPage({
   })
   return (
     <main>
+      <p><a href={`/hr/salary?year=${period.year}&month=${period.month}`}>Edit employee salary</a></p>
       {query.failure ? <p>{query.failure}</p> : null}
       <p>
         Org totals {period.year}-{String(period.month).padStart(2, "0")}

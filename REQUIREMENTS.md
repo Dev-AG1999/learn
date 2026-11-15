@@ -52,3 +52,39 @@ These are named, and the rule for them is not:
 - How HR access and employee login authenticate
 - The org pay questions
 - Column names beyond the employee, the monthly payslip snapshot, leave days, and claims
+
+## Salary editing milestone
+
+The HR salary editor at `/hr/salary` loads an existing employee by ID and a
+1900–9999 year / 1–12 month. It can create a missing monthly payslip. Employee
+creation, employee directory search, authentication, imports and analytics are
+separate milestones.
+
+Required inputs are employee ID, period, annual CTC, supported ISO currency,
+unpaid leave days, other deductions and explicit confirmation. Money inputs are
+non-negative safe integers in minor units; leave days are non-negative integers
+bounded by the actual number of days in the selected month. Negative net pay is
+permitted by the existing formula. Claims require an ID, receipt, valid status
+and non-negative safe integer amount. Existing claims are preserved during salary
+editing; currency changes are blocked when the month has claims.
+
+Saving uses the existing domain computation and SQLite transaction, including a
+new monthly salary input record. Claim approval uses that month's saved CTC and
+currency. Existing monthly snapshots are not rewritten by changes to another
+month. Historical records predating monthly input storage fall back to current
+employee CTC because their original annual input cannot be recovered exactly.
+HR should verify the input before saving such a month.
+
+A version fingerprint of saved inputs, payslip, leave and claims rejects stale
+forms, including concurrent saves in the supported single application process.
+Successful writes refresh HR and employee views. Errors retain entered salary
+values; unexpected database errors return a generic message without logging pay.
+The existing application has no session authentication; the HR route and server
+action share that limitation and require the authentication milestone before
+external deployment.
+
+Validation: `npm test`, `npx tsc --noEmit`, `npx next build`. Tests cover domain
+validation, database persistence, monthly isolation, preserved claims, stale and
+concurrent edits, confirmation, historical claim recalculation, action feedback,
+and server-rendered form controls. Automated browser interaction and visual
+viewport tests are not included in this milestone.
