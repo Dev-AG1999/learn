@@ -1,3 +1,4 @@
+import { requireRequest, authFailure } from "../../../../src/auth/http.ts"
 import { employeeAccess } from "../../../../src/access/roles.ts"
 import { withPayroll } from "../../../../src/payroll-db.ts"
 import { readPeriod } from "../../../../src/period.ts"
@@ -7,6 +8,7 @@ export async function POST(
   context: { params: Promise<{ employeeId: string }> },
 ) {
   const { employeeId } = await context.params
+  try { await requireRequest(request, "employee", employeeId) } catch (error) { return authFailure(error) }
   const form = await request.formData()
   const period = readPeriod(String(form.get("year") ?? ""), String(form.get("month") ?? ""))
   const back = new URL(`/employee/${employeeId}`, request.url)

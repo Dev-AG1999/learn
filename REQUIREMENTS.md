@@ -49,7 +49,6 @@ These are named, and the rule for them is not:
 
 - The required-field list, the currency check, claim-amount rules, and receipt rules
 - Sheet, document, and receipt formats
-- How HR access and employee login authenticate
 - The org pay questions
 - Column names beyond the employee, the monthly payslip snapshot, leave days, and claims
 
@@ -79,12 +78,39 @@ A version fingerprint of saved inputs, payslip, leave and claims rejects stale
 forms, including concurrent saves in the supported single application process.
 Successful writes refresh HR and employee views. Errors retain entered salary
 values; unexpected database errors return a generic message without logging pay.
-The existing application has no session authentication; the HR route and server
-action share that limitation and require the authentication milestone before
-external deployment.
+At salary milestone completion, the application had no session authentication.
+The authentication milestone below supersedes that limitation.
 
 Validation: `npm test`, `npx tsc --noEmit`, `npx next build`. Tests cover domain
 validation, database persistence, monthly isolation, preserved claims, stale and
 concurrent edits, confirmation, historical claim recalculation, action feedback,
 and server-rendered form controls. Automated browser interaction and visual
 viewport tests are not included in this milestone.
+
+
+## Authentication milestone
+
+User direction: add JWT sessions, bearer-token authentication and protections for
+employee payroll and other sensitive data. This milestone adds HR/employee login,
+revocable 30-minute JWT sessions, HttpOnly browser cookies, API bearer issuance,
+server-side role/employee ownership checks on all protected entry points, strict
+mutation Origin checks for cookies, scrypt passwords, persistent SQLite login
+throttling, account provisioning/reset/disable commands, private database-file
+permissions and security response headers. The database engine and payroll
+computation are preserved. `jose` handles JWT signing and verification.
+
+Accounts are provisioned by a trusted host administrator, with no public signup
+or default passwords. Employees are linked to existing employee IDs. See
+`SECURITY.md` and `.env.example` for required signing-key/origin configuration,
+account commands, endpoint contracts, session policy and deployment controls.
+SQLite file contents are not encrypted; encrypted disks and backups are a
+required deployment responsibility for real payroll data.
+
+Checks: `npm test`, `npx tsc --noEmit`, `npx next build`, then
+`npm run test:auth:http` for real production HTTP tests against a temporary,
+isolated synthetic database. The HTTP check binds a localhost port and simulates
+a production HTTPS origin in headers; it does not test TLS termination or browser
+cookie enforcement. Tests cover password hashing, JWT policy/tampering/expiry,
+revocation, account disable/reset, persistent throttling, role isolation, employee
+ID tampering, cookie and bearer routes, CSRF denial, unauthorized salary actions,
+server page guards, private file permissions and existing payroll behavior.

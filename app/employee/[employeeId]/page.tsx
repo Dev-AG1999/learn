@@ -1,3 +1,5 @@
+import { AccountNav } from "../../components/account-nav.tsx"
+import { requirePage } from "../../../src/auth/next.ts"
 import { employeeAccess } from "../../../src/access/roles.ts"
 import { explainPayslip } from "../../../src/explain-payslip.ts"
 import { payslipText } from "../../../src/payslip-document.ts"
@@ -13,11 +15,13 @@ export default async function EmployeePayslipPage({
   searchParams: Promise<{ year?: string; month?: string; failure?: string }>
 }) {
   const { employeeId } = await params
+  await requirePage("employee", employeeId)
   const query = await searchParams
   const period = readPeriod(query.year, query.month)
   if (!period) {
     return (
       <main>
+      <AccountNav />
         <p>Year and month are required.</p>
       </main>
     )
@@ -28,6 +32,7 @@ export default async function EmployeePayslipPage({
   })
   return (
     <main>
+      <AccountNav />
       {query.failure ? <p>{query.failure}</p> : null}
       <p>{explainPayslip(slip)}</p>
       {payslipText(slip).map((line) => (

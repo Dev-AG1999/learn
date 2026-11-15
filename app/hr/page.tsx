@@ -1,3 +1,5 @@
+import { AccountNav } from "../components/account-nav.tsx"
+import { requirePage } from "../../src/auth/next.ts"
 import { hrAccess } from "../../src/access/roles.ts"
 import { withPayroll } from "../../src/payroll-db.ts"
 import { readPeriod } from "../../src/period.ts"
@@ -8,11 +10,13 @@ export default async function HrPage({
 }: {
   searchParams: Promise<{ year?: string; month?: string; cursor?: string; q?: string; failure?: string }>
 }) {
+  await requirePage("hr")
   const query = await searchParams
   const period = readPeriod(query.year, query.month)
   if (!period) {
     return (
       <main>
+      <AccountNav />
         <p>Year and month are required.</p>
       </main>
     )
@@ -27,6 +31,7 @@ export default async function HrPage({
   })
   return (
     <main>
+      <AccountNav />
       <p><a href={`/hr/salary?year=${period.year}&month=${period.month}`}>Edit employee salary</a></p>
       {query.failure ? <p>{query.failure}</p> : null}
       <p>

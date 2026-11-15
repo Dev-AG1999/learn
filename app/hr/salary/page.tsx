@@ -1,3 +1,5 @@
+import { AccountNav } from "../../components/account-nav.tsx"
+import { requirePage } from "../../../src/auth/next.ts"
 import { withPayroll } from "../../../src/payroll-db.ts"
 import { readSalaryEditor } from "../../../src/salary-editor.ts"
 import { readPeriod } from "../../../src/period.ts"
@@ -7,11 +9,13 @@ import "./salary.css"
 export const dynamic = "force-dynamic"
 
 export default async function SalaryPage({ searchParams }: { searchParams: Promise<{ employeeId?: string; year?: string; month?: string }> }) {
+  await requirePage("hr")
   const query = await searchParams
   const period = readPeriod(query.year, query.month)
   const valid = period && period.year >= 1900 && period.year <= 9999 && period.month >= 1 && period.month <= 12
   const data = valid && query.employeeId ? await withPayroll(db => readSalaryEditor(db, query.employeeId!, period.year, period.month)) : null
   return <main className="salary-shell">
+    <AccountNav />
     <a href={valid ? `/hr?year=${period.year}&month=${period.month}` : "/"}>← HR dashboard</a>
     <header><p>HR · PAYROLL MANAGEMENT</p><h1>Edit employee salary</h1><p>Review payroll inputs and save a monthly payslip.</p></header>
     <form method="get" className="salary-card salary-lookup">

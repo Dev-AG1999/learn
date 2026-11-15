@@ -7,8 +7,11 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "seed": "node --experimental-strip-types scripts/seed.ts",
-    "test": "vitest run"
+    "seed": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/seed.ts",
+    "test": "vitest run",
+    "auth:user": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/auth-user.ts",
+    "test:auth:http": "node --experimental-strip-types scripts/smoke-auth.ts",
+    "test:auth:browser": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/check-login-browser.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -18,6 +21,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
+    "jose": "^6.2.17",
     "next": "^16.4.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

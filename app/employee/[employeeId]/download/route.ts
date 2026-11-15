@@ -1,3 +1,4 @@
+import { requireRequest, authFailure } from "../../../../src/auth/http.ts"
 import { employeeAccess } from "../../../../src/access/roles.ts"
 import { payslipPdf } from "../../../../src/payslip-document.ts"
 import { withPayroll } from "../../../../src/payroll-db.ts"
@@ -8,6 +9,7 @@ export async function GET(
   context: { params: Promise<{ employeeId: string }> },
 ) {
   const { employeeId } = await context.params
+  try { await requireRequest(request, "employee", employeeId) } catch (error) { return authFailure(error) }
   const url = new URL(request.url)
   const period = readPeriod(url.searchParams.get("year") ?? undefined, url.searchParams.get("month") ?? undefined)
   if (!period) {
@@ -20,8 +22,9 @@ export async function GET(
   if (!pdf) return new Response("No payslip", { status: 404 })
   return new Response(Buffer.from(pdf), {
     headers: {
+      "Cache-Control": "no-store",
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="payslip-${employeeId}-${period.year}-${period.month}.pdf"`,
+      "Content-Disposition": `attachment; filename="payslip-${encodeURIComponent(employeeId)}-${period.year}-${period.month}.pdf"`,
     },
   })
 }

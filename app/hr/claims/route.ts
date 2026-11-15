@@ -1,8 +1,10 @@
+import { requireRequest, authFailure } from "../../../src/auth/http.ts"
 import { hrAccess } from "../../../src/access/roles.ts"
 import { withPayroll } from "../../../src/payroll-db.ts"
 import { readPeriod } from "../../../src/period.ts"
 
 export async function POST(request: Request) {
+  try { await requireRequest(request, "hr") } catch (error) { return authFailure(error) }
   const form = await request.formData()
   const period = readPeriod(String(form.get("year") ?? ""), String(form.get("month") ?? ""))
   const back = new URL("/hr", request.url)
