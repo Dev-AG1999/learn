@@ -1,0 +1,32 @@
+HR SALARY REGISTER - GOOGLE SHEETS WORKFLOW
+
+Contains 20 fictional employees for 11/2026. Replace sample rows with
+your employee IDs and payroll inputs before using real data.
+
+1. Open Google Sheets and import hr-maintained-salary-register.xlsx.
+2. Maintain one row per employee, using one payroll month for the whole file.
+3. Keep the seven header names. Do not add names or extra columns to the upload tab.
+4. Download that tab as CSV, or download the single-sheet workbook as Excel .xlsx.
+5. In Paydesk, sign in as HR, choose Upload salary sheet, select the download,
+   validate, review and confirm. The dashboard then shows saved monthly payroll.
+
+Money columns ending in Minor use paise for INR.
+Annual CTC Rs 12,00,000 = annualCtcMinor 120000000.
+A monthly deduction of Rs 1,500 = otherDeductionsMinor 150000.
+Do not put monthly salary into the annual CTC column.
+
+Month: 1 January, 2 February, 3 March, 4 April, 5 May, 6 June,
+7 July, 8 August, 9 September, 10 October, 11 November, 12 December.
+
+Each ID must be unique within a file. Re-uploading existing IDs updates only
+the chosen payroll month after review; other saved months and claims are kept.
+For another month, change year/month for every row, or maintain a separate
+monthly Google Sheet. If you keep multiple tabs, export only the selected
+month as CSV: the app accepts only single-worksheet Excel files.
+
+Use plain values, not formulas, in the upload file. Keep employee IDs as text
+to preserve leading zeros. No passwords, bank details or claim approvals belong
+in this template. Employee login accounts are created separately.
+
+This workflow uploads an exported file; it does not automatically sync Google
+Sheets. The application does not currently map arbitrary legacy sheet columns.

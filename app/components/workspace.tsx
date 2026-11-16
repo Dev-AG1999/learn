@@ -15,10 +15,18 @@ export function Workspace({
 }: {
   principal: Principal
   period: Period
-  active: "overview" | "salary" | "payslip" | "create" | "import"
+  active: "overview" | "salary" | "payslip" | "create" | "import" | "employees"
   children: ReactNode
 }) {
   const hr = principal.role === "hr"
+  const pageTitle = {
+    overview: "Overview",
+    salary: "Salary editor",
+    payslip: "My payslip",
+    create: "Add employee",
+    import: "Upload salary sheet",
+    employees: "Employees",
+  }[active]
   const query = periodQuery(period)
   const employeePath = `/employee/${encodeURIComponent(principal.employeeId ?? "")}`
   const links: {
@@ -33,6 +41,12 @@ export function Workspace({
           href: `/hr?${query}`,
           icon: "grid",
           active: active === "overview",
+        },
+        {
+          label: "Employees",
+          href: `/hr/employees?${query}`,
+          icon: "users",
+          active: active === "employees",
         },
         {
           label: "Salary editor",
@@ -140,18 +154,7 @@ export function Workspace({
       <div className="workspace-main">
         <header className="topbar">
           <div className="breadcrumb">
-            Workspace <span>/</span>{" "}
-            <strong>
-              {active === "create"
-                ? "Add employee"
-                : active === "import"
-                  ? "Upload salary sheet"
-                  : active === "salary"
-                    ? "Salary editor"
-                    : hr
-                      ? "Overview"
-                      : "My payslip"}
-            </strong>
+            Workspace <span>/</span> <strong>{pageTitle}</strong>
           </div>
           <div className="topbar-meta">
             <span className="period-chip">

@@ -25,6 +25,7 @@ vi.mock("../app/hr/salary/actions.ts", () => ({ saveSalary: vi.fn() }))
 vi.mock("../app/hr/employees/new/actions.ts", () => ({
   previewEmployee: vi.fn(),
 }))
+import EmployeesPage from "../app/hr/employees/page.tsx"
 import NewEmployeePage from "../app/hr/employees/new/page.tsx"
 import ImportPage from "../app/hr/import/page.tsx"
 import ReviewPage from "../app/hr/import/review/[draftId]/page.tsx"
@@ -220,4 +221,34 @@ test("review page shows pending records without writing and displays a saved rec
   html = renderToStaticMarkup(await ReviewPage(props))
   expect(html).toContain("This review is unavailable")
   expect(html).not.toContain("₹12,00,000.00")
+})
+
+test("employee directory lists saved employees with a link to edit salary", async () => {
+  const html = renderToStaticMarkup(
+    await EmployeesPage({
+      searchParams: Promise.resolve({ year: "2026", month: "1" }),
+    })
+  )
+  expect(html).toContain("emp-a")
+  expect(html).toContain("INR ₹1,000.00")
+  expect(html).toContain(
+    "/hr/salary?employeeId=emp-a&amp;year=2026&amp;month=1"
+  )
+  expect(html).toContain("1 shown")
+})
+
+test("directory search has an honest empty state and invalid filters do not show records", async () => {
+  let html = renderToStaticMarkup(
+    await EmployeesPage({
+      searchParams: Promise.resolve({ q: "MISSING", year: "2026", month: "1" }),
+    })
+  )
+  expect(html).toContain("No matching employees")
+  html = renderToStaticMarkup(
+    await EmployeesPage({
+      searchParams: Promise.resolve({ q: "*", year: "2026", month: "1" }),
+    })
+  )
+  expect(html).toContain("Choose a valid period")
+  expect(html).not.toContain("INR ₹1,000.00")
 })

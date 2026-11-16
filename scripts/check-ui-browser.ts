@@ -280,6 +280,27 @@ try {
     (await withPayroll((db) => db.getClaims("test-a", 2026, 1)))[0]?.status,
     "approved"
   )
+  await browser.navigate(`${origin}/hr/employees?year=2026&month=1`)
+  await browser.waitFor(
+    "document.querySelector('main').innerText.includes('test-a')"
+  )
+  await capture("employee-directory-desktop", 1440)
+  await capture("employee-directory-mobile", 390)
+  await browser.navigate(
+    `${origin}/hr/employees?year=2026&month=1&q=test-b&currency=USD`
+  )
+  assert.equal(
+    await browser.evaluate(
+      "document.querySelector('tbody').innerText.includes('test-a')"
+    ),
+    false
+  )
+  assert.equal(
+    await browser.evaluate(
+      "document.querySelector('tbody').innerText.includes('test-b')"
+    ),
+    true
+  )
   await browser.navigate(`${origin}/hr/employees/new?year=2026&month=2`)
   await capture("add-employee-desktop", 1440)
   await capture("add-employee-mobile", 390)
@@ -401,6 +422,8 @@ try {
   await browser.navigate(`${origin}/employee/test-a?year=2026&month=1`)
   await capture("employee-desktop", 1440)
   await capture("employee-mobile", 390)
+  await browser.send("Page.navigate", { url: `${origin}/hr/employees` })
+  await browser.waitFor("location.pathname === '/forbidden'")
   await browser.navigate(`${origin}/employee/test-a?year=2026&month=2`)
   await browser.waitFor(
     "document.body.innerText.includes('No payslip for this month')"

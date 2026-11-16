@@ -64,6 +64,13 @@ export default async function HrPage({
         description="A clear view of your people, payroll, and what needs attention."
       >
         <div className="dashboard-entry-actions">
+          <a
+            className="button button-secondary"
+            href={`/hr/employees?${periodQuery(period)}`}
+          >
+            <Icon name="users" size={18} />
+            View employees
+          </a>
           <a className="button button-secondary" href="/hr/import">
             <Icon name="file" size={18} />
             Upload salary sheet

@@ -7,6 +7,7 @@ import type {
 } from "../db/sqlite-payroll.ts"
 
 export type HrAccess = {
+  listEmployees: PayrollRepository["listEmployees"]
   saveMonth(input: SaveMonthInput): Promise<SaveMonthResult>
   approveClaim(input: ApproveClaimInput): Promise<SaveMonthResult>
   listPendingClaims: PayrollRepository["listPendingClaims"]
@@ -18,14 +19,18 @@ export type HrAccess = {
 
 export type EmployeeAccess = {
   get(year: number, month: number): ReturnType<PayrollRepository["get"]>
-  getClaims(year: number, month: number): ReturnType<PayrollRepository["getClaims"]>
+  getClaims(
+    year: number,
+    month: number
+  ): ReturnType<PayrollRepository["getClaims"]>
   submitPendingClaim(
-    input: Omit<PendingClaimInput, "employeeId">,
+    input: Omit<PendingClaimInput, "employeeId">
   ): Promise<SaveMonthResult>
 }
 
 export function hrAccess(db: PayrollRepository): HrAccess {
   return {
+    listEmployees: (query) => db.listEmployees(query),
     saveMonth: (input) => db.saveMonth(input),
     approveClaim: (input) => db.approveClaim(input),
     listPendingClaims: (limit, cursor) => db.listPendingClaims(limit, cursor),
@@ -36,7 +41,10 @@ export function hrAccess(db: PayrollRepository): HrAccess {
   }
 }
 
-export function employeeAccess(db: PayrollRepository, employeeId: string): EmployeeAccess {
+export function employeeAccess(
+  db: PayrollRepository,
+  employeeId: string
+): EmployeeAccess {
   return {
     get(year, month) {
       return db.get(employeeId, year, month)

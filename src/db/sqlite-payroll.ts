@@ -73,6 +73,28 @@ export type EmployeePage = {
   nextCursor: string | null
 }
 
+export type EmployeeDirectoryRow = {
+  employeeId: string
+  annualCtcMinor: number
+  currency: string
+  monthlyNetMinor: number | null
+  monthlyCurrency: string | null
+}
+
+export type EmployeeDirectoryQuery = {
+  year: number
+  month: number
+  prefix: string
+  currency: string
+  cursor: string | null
+  limit: number
+}
+
+export type EmployeeDirectoryPage = {
+  employees: EmployeeDirectoryRow[]
+  nextCursor: string | null
+}
+
 export type SaveMonthResult =
   { ok: true; payslip: StoredPayslip } | { ok: false; failures: string[] }
 
@@ -113,6 +135,7 @@ export type CitedAnswer = {
 export type SalaryInputs = { annualCtcMinor: number; currency: string }
 
 export type PayrollRepository = {
+  listEmployees(query: EmployeeDirectoryQuery): Promise<EmployeeDirectoryPage>
   stagePayroll(input: {
     ownerId: string
     source: string
@@ -189,6 +212,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       annual_ctc_minor INTEGER NOT NULL,
       currency TEXT NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS idx_employees_currency_id ON employees(currency, employee_id);
     CREATE TABLE IF NOT EXISTS payslips (
       employee_id TEXT NOT NULL,
       year INTEGER NOT NULL,
@@ -880,6 +904,72 @@ export function openPayrollDatabase(path: string): PayrollRepository {
         employeeCount: row.employee_count,
         netMinor: row.net_minor,
       }))
+    },
+
+    async listEmployees(query) {
+      if (
+        !Number.isInteger(query.limit) ||
+        query.limit < 1 ||
+        query.limit > 100 ||
+        !Number.isInteger(query.year) ||
+        query.year < 1900 ||
+        query.year > 9999 ||
+        !Number.isInteger(query.month) ||
+        query.month < 1 ||
+        query.month > 12 ||
+        !/^[A-Za-z0-9_-]{0,64}$/.test(query.prefix) ||
+        (query.currency &&
+          !(Intl.supportedValuesOf("currency") as string[]).includes(
+            query.currency
+          ))
+      ) {
+        throw new Error("Invalid employee directory filters.")
+      }
+      const conditions = ["e.employee_id > ?"]
+      const parameters: (string | number)[] = [
+        query.year,
+        query.month,
+        query.cursor ?? "",
+      ]
+      if (query.prefix) {
+        conditions.push("e.employee_id GLOB ?")
+        parameters.push(`${query.prefix}*`)
+      }
+      if (query.currency) {
+        conditions.push("e.currency = ?")
+        parameters.push(query.currency)
+      }
+      parameters.push(query.limit + 1)
+      const rows = db
+        .prepare(
+          `
+        SELECT e.employee_id, e.annual_ctc_minor, e.currency,
+               p.net_minor AS monthly_net_minor, p.currency AS monthly_currency
+        FROM employees e LEFT JOIN payslips p
+          ON p.employee_id = e.employee_id AND p.year = ? AND p.month = ?
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY e.employee_id LIMIT ?
+      `
+        )
+        .all(...parameters) as Array<{
+        employee_id: string
+        annual_ctc_minor: number
+        currency: string
+        monthly_net_minor: number | null
+        monthly_currency: string | null
+      }>
+      const page = rows.slice(0, query.limit)
+      return {
+        employees: page.map((row) => ({
+          employeeId: row.employee_id,
+          annualCtcMinor: row.annual_ctc_minor,
+          currency: row.currency,
+          monthlyNetMinor: row.monthly_net_minor,
+          monthlyCurrency: row.monthly_currency,
+        })),
+        nextCursor:
+          rows.length > query.limit ? page[page.length - 1].employee_id : null,
+      }
     },
 
     async listEmployeeIds(limit, cursor) {

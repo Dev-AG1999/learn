@@ -202,3 +202,19 @@ created in Server Components and passed as serializable props to both client
 forms. Initial client rendering does not recompute either from browser Intl.
 Regression tests simulate different client metadata, and the browser workflow
 reverses the browser currency list and fails on recoverable hydration errors.
+
+## Employee directory milestone and architecture review
+
+User direction: locate the employee list, reduce repeated login, and review an AI
+assistant/import-review design, including whether LangChain, LangGraph and vector
+storage are appropriate. The committed salary-import milestone precedes this work.
+Only the employee directory is implemented here. `/hr/employees` is HR-only and
+provides case-sensitive ID-prefix search, current-CTC currency filtering, selected
+monthly snapshot pay, 25-row keyset pagination and salary-editor links. Employees
+without the selected month's payslip remain visible. No profile names are invented.
+Current annual CTC and historical snapshot currencies/amounts are kept distinct.
+
+`ARCHITECTURE_REVIEW.md` records current limitations and the proposed next steps:
+rotating refresh sessions, private/cited document retrieval, role-scoped read-only
+chat, then advisory import analysis. Session/AI settings in that review are proposals,
+not behavior added in this milestone. The current 30-minute login policy is unchanged.
