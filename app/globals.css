@@ -1642,10 +1642,9 @@ tbody tr:hover {
 
 .employee-directory-filters {
   display: grid;
-  grid-template-columns: minmax(150px, 1.5fr) minmax(130px, 1fr) minmax(
-      130px,
-      1fr
-    ) 95px auto;
+  grid-template-columns:
+    minmax(150px, 1.5fr) minmax(130px, 1fr) minmax(130px, 1fr)
+    95px auto;
   gap: 16px;
   align-items: end;
 }
@@ -1671,5 +1670,27 @@ tbody tr:hover {
   .sidebar {
     overflow-y: auto;
     overflow-x: hidden;
+  }
+}
+
+.session-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.session-notice strong {
+  display: block;
+}
+.session-notice-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+@media (max-width: 960px) {
+  .session-notice {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

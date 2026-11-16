@@ -5,7 +5,7 @@ import { Icon } from "../../components/ui-icon.tsx"
 import { UploadForm } from "./upload-form.tsx"
 
 export default async function ImportPage() {
-  const principal = await requirePage("hr")
+  const principal = await requirePage("hr", undefined, "/hr/import")
   return (
     <Workspace principal={principal} period={currentPeriod()} active="import">
       <PageHeading

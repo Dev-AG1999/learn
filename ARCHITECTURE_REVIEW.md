@@ -167,3 +167,10 @@ prompt-injection attempts, citation correctness, exact numeric grounding, missin
 records/reasons, provider failure and a fixed evaluation question set. Model names,
 provider credentials, permitted data sharing and cost budgets are required before
 the live AI milestone, not before finishing the employee directory.
+
+
+## Refresh milestone implementation update
+
+The rotating-session proposal is now implemented in the subsequent refresh
+milestone. See `SECURITY.md` for actual policy, API contracts and migration notes.
+Document ingestion and live AI integration remain proposed future milestones.

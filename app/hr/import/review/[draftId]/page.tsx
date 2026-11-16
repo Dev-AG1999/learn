@@ -1,4 +1,4 @@
-import { requirePage } from "../../../../../src/auth/next.ts"
+import { requirePage, pageReturnTo } from "../../../../../src/auth/next.ts"
 import { withPayroll } from "../../../../../src/payroll-db.ts"
 import {
   currentPeriod,
@@ -20,9 +20,13 @@ export default async function PayrollReviewPage({
   params: Promise<{ draftId: string }>
   searchParams: Promise<{ page?: string; failure?: string }>
 }) {
-  const principal = await requirePage("hr")
   const { draftId } = await params
   const query = await searchParams
+  const principal = await requirePage(
+    "hr",
+    undefined,
+    pageReturnTo(`/hr/import/review/${draftId}`, query)
+  )
   const draft = await withPayroll((db) =>
     db.getPayrollDraft(draftId, principal.userId, Number(query.page ?? 1))
   )

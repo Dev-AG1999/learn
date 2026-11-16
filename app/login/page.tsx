@@ -1,4 +1,4 @@
-import { currentPrincipal } from "../../src/auth/next.ts"
+import { pagePrincipal } from "../../src/auth/next.ts"
 import { redirect } from "next/navigation.js"
 import { Icon } from "../components/ui-icon.tsx"
 import "./login.css"
@@ -6,10 +6,10 @@ import "./login.css"
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; reauth?: string }>
 }) {
-  if (await currentPrincipal()) redirect("/")
-  const { error } = await searchParams
+  const { error, reauth } = await searchParams
+  if (reauth !== "yes" && (await pagePrincipal())) redirect("/")
   return (
     <main className="login-layout">
       <section
@@ -97,6 +97,9 @@ export default async function LoginPage({
             </div>
           )}
           <form action="/auth/login" method="post" className="login-form">
+            {reauth === "yes" && (
+              <input type="hidden" name="reauth" value="yes" />
+            )}
             <label htmlFor="username">
               Username
               <input

@@ -1,3 +1,4 @@
+import { SessionNotice } from "./session-notice.tsx"
 import type { ReactNode } from "react"
 import type { Principal } from "../../src/auth/repository.ts"
 import {
@@ -167,6 +168,7 @@ export function Workspace({
           </div>
         </header>
         <main id="main-content" className="page-content">
+          <SessionNotice userId={principal.userId} />
           {children}
         </main>
         <footer className="workspace-footer">

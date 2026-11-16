@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite"
 import assert from "node:assert/strict"
 import { spawn, execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
@@ -242,6 +243,50 @@ try {
     "document.body.innerText.includes('No payroll for this month')"
   )
   await capture("hr-empty", 1440)
+  const expireAccess = () => {
+    const raw = new DatabaseSync(process.env.PAYROLL_DB!)
+    try {
+      raw.exec(
+        "UPDATE auth_sessions SET expires_at=0; UPDATE auth_refresh_tokens SET created_at=unixepoch()-600 WHERE consumed_at IS NULL;"
+      )
+    } finally {
+      raw.close()
+    }
+  }
+  expireAccess()
+  await browser.navigate(`${origin}/hr/employees?year=2026&month=1&q=test-a`)
+  await browser.waitFor(
+    "!!document.querySelector('tbody') && location.search.includes('q=test-a')"
+  )
+  const tabOne = await browser.newTab(),
+    tabTwo = await browser.newTab()
+  try {
+    expireAccess()
+    const target = `${origin}/auth/renew?returnTo=${encodeURIComponent("/hr/employees?year=2026&month=1&q=test-a")}`
+    await Promise.all([tabOne.navigate(target), tabTwo.navigate(target)])
+    let restored = false
+    for (let i = 0; i < 150; i++) {
+      try {
+        restored =
+          (await tabOne.evaluate<boolean>(
+            "location.pathname === '/hr/employees' && !!document.querySelector('tbody')"
+          )) &&
+          (await tabTwo.evaluate<boolean>(
+            "location.pathname === '/hr/employees' && !!document.querySelector('tbody')"
+          ))
+      } catch {}
+      if (restored) break
+      await delay(100)
+    }
+    assert.equal(
+      restored,
+      true,
+      "Two tabs must coordinate one successful refresh without revoking the family."
+    )
+  } finally {
+    await tabOne.close()
+    await tabTwo.close()
+  }
   await browser.navigate(`${origin}/hr?year=2026&month=1`)
   await browser.waitFor("document.body.innerText.includes('₹10,000.00')")
   assert.equal(
@@ -260,6 +305,7 @@ try {
   await browser.waitFor("!!document.querySelector('.salary-editor')")
   await capture("salary-desktop", 1440)
   await capture("salary-mobile", 390)
+  expireAccess()
   await browser.evaluate(
     "document.querySelector('.salary-editor [name=otherDeductionsMinor]').value='900'; document.querySelector('.salary-editor [name=confirmed]').checked=true; document.querySelector('.salary-editor').requestSubmit()"
   )
@@ -440,7 +486,7 @@ try {
     "Browser hydration must succeed even when browser and server currency metadata differ."
   )
   console.log(
-    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, manual employee creation, CSV/Excel upload and confirmed import, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
+    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, manual employee creation, CSV/Excel upload and confirmed import, silent session recovery and cross-tab refresh, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
   )
 } catch (error) {
   if (browser) {

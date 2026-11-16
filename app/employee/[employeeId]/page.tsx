@@ -1,4 +1,4 @@
-import { requirePage } from "../../../src/auth/next.ts"
+import { requirePage, pageReturnTo } from "../../../src/auth/next.ts"
 import { employeeAccess } from "../../../src/access/roles.ts"
 import { withPayroll } from "../../../src/payroll-db.ts"
 import { readPeriod } from "../../../src/period.ts"
@@ -31,8 +31,12 @@ export default async function EmployeePayslipPage({
   }>
 }) {
   const { employeeId } = await params
-  const principal = await requirePage("employee", employeeId)
   const query = await searchParams
+  const principal = await requirePage(
+    "employee",
+    employeeId,
+    pageReturnTo(`/employee/${encodeURIComponent(employeeId)}`, query)
+  )
   const requested =
     query.year === undefined && query.month === undefined
       ? currentPeriod()

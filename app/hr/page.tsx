@@ -1,4 +1,4 @@
-import { requirePage } from "../../src/auth/next.ts"
+import { requirePage, pageReturnTo } from "../../src/auth/next.ts"
 import { hrAccess } from "../../src/access/roles.ts"
 import { withPayroll } from "../../src/payroll-db.ts"
 import { readPeriod } from "../../src/period.ts"
@@ -25,8 +25,12 @@ export default async function HrPage({
     notice?: string
   }>
 }) {
-  const principal = await requirePage("hr")
   const query = await searchParams
+  const principal = await requirePage(
+    "hr",
+    undefined,
+    pageReturnTo("/hr", query)
+  )
   const requested =
     query.year === undefined && query.month === undefined
       ? currentPeriod()

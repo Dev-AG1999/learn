@@ -218,3 +218,30 @@ Current annual CTC and historical snapshot currencies/amounts are kept distinct.
 rotating refresh sessions, private/cited document retrieval, role-scoped read-only
 chat, then advisory import analysis. Session/AI settings in that review are proposals,
 not behavior added in this milestone. The current 30-minute login policy is unchanged.
+
+
+## Rotating refresh-session milestone
+
+The employee-directory milestone was committed before this work. User direction:
+reduce repeated login with refresh tokens while retaining role-based data isolation
+and security controls. Access JWTs now last 10 minutes; rotating opaque refresh
+credentials allow an active eight-hour work session with a 30-minute inactivity
+limit. Status polling does not count as activity. Login/logout/reset/disable and
+signing-key changes invalidate the appropriate refresh families as documented in
+`SECURITY.md`. No AI integration is added by this milestone.
+
+Browser cookies remain HttpOnly, Secure in production, host-only and same-site.
+Refresh is origin-checked; only token hashes are stored. Rotation is atomic,
+consumed-token replay revokes the family, and browser tabs coordinate with Web
+Locks. API clients have an explicit JSON refresh endpoint. Renewal preserves
+safe return URLs, reviews and form values, with warnings and new-tab password
+reauthentication for actual timeout. The 15-minute salary-review lifetime is
+independent and unchanged. Legacy JWT-only sessions require signing in once.
+
+Validation includes rotation/replay/concurrency, idle/absolute expiry, family
+isolation, database migration, logout after access expiry, reset/disable/key
+rotation, CSRF, safe redirects, HTTP cookie/API contracts and browser recovery.
+The isolated browser test expires access sessions in its synthetic database,
+restores the exact URL, renews simultaneously in two tabs and submits a salary
+form without losing entered values, in addition to the existing payroll/import
+and role-isolation checks. No production credentials or payroll values are logged.

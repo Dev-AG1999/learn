@@ -1,4 +1,4 @@
-import { requirePage } from "../../../../src/auth/next.ts"
+import { requirePage, pageReturnTo } from "../../../../src/auth/next.ts"
 import { currentPeriod } from "../../../../src/presentation.ts"
 import { readPeriod } from "../../../../src/period.ts"
 import { Workspace, PageHeading } from "../../../components/workspace.tsx"
@@ -9,8 +9,12 @@ export default async function NewEmployeePage({
 }: {
   searchParams: Promise<{ year?: string; month?: string }>
 }) {
-  const principal = await requirePage("hr")
   const query = await searchParams
+  const principal = await requirePage(
+    "hr",
+    undefined,
+    pageReturnTo("/hr/employees/new", query)
+  )
   const period = readPeriod(query.year, query.month) ?? currentPeriod()
   return (
     <Workspace principal={principal} period={period} active="create">

@@ -42,11 +42,13 @@ stored. The service limits concurrent password checks to two to bound memory.
 
 Browser login: `POST /auth/login` with URL-encoded username/password. The signed
 JWT is stored only in an HttpOnly, SameSite=Lax cookie, with Secure and a __Host-
-name in production. Sessions expire after 30 minutes, without sliding renewal.
-Sign-out is a POST and immediately revokes the server session.
+name in production. Access JWTs last 10 minutes. A separate opaque refresh cookie
+renews active sessions within a 30-minute inactivity limit and eight-hour absolute
+work session. Sign-out is a POST and immediately revokes the entire session family.
 
 API login: `POST /api/auth/token` with JSON `{ "username": "...", "password": "..." }`.
-The response contains `access_token`, `token_type: "Bearer"`, and `expires_in`.
+The response contains `access_token`, `refresh_token`, `token_type: "Bearer"`, and
+`expires_in` (600 seconds for the access token).
 Send `Authorization: Bearer <access_token>` on protected route handlers. There is
 no token storage in localStorage and no token in a URL. API token issuance never
 uses an existing cookie or returns a browser session cookie.
@@ -63,8 +65,9 @@ JWT verification pins HS256, issuer, audience, type, required claims, and a fixe
 lifetime. Tokens contain only opaque account/session IDs and timestamps. No
 salary, password, username, role or employee data is put in JWTs. Every request
 also checks the unexpired SQLite session and current account role/disabled state.
-Only hashed session IDs are persisted. Changing the signing key invalidates all
-JWTs; users must sign in again. The same secret must persist across restarts.
+Only hashed session IDs and refresh tokens are persisted. Families are bound to
+the signing-key fingerprint; changing the signing key invalidates existing refresh
+credentials as well as JWTs, so users must sign in again. The same secret must persist across restarts.
 
 Five login attempts per normalized username are allowed in a 15-minute window,
 including successful attempts. Throttling is persisted in SQLite, applies equally
@@ -163,3 +166,53 @@ recent reviews per account and 50 globally bound temporary storage. Expired data
 is cleaned during subsequent staging; SQLite and backup encryption remain a
 host/deployment responsibility. Do not send file contents to logs or AI services.
 Employee salary creation does not create authentication accounts or passwords.
+
+
+## Rotating refresh sessions
+
+`POST /auth/refresh` uses only the HttpOnly refresh cookie and requires the exact
+application Origin. It returns timing metadata, never JWT or refresh secrets to
+browser JavaScript. Both cookies are Secure and __Host-prefixed in production.
+`POST /api/auth/refresh` accepts JSON `{ "refresh_token": "..." }` for explicit API
+clients and returns the replacement access/refresh tokens without setting cookies.
+If an Origin header is present on API refresh, it must match APP_ORIGIN.
+
+Every successful refresh consumes the old token and creates a new random token in
+one SQLite transaction. Only SHA-256 hashes of 256-bit random refresh secrets are
+stored. Consumed hashes are retained until family expiry to detect replay. Reuse
+revokes every access session in that family; separate device login families remain
+independent. Rotation is limited to once per minute per token to bound growth;
+normal browser renewal begins near access expiry. Absolute expiry never slides.
+Expired families are removed on login; their tokens and sessions cascade-delete.
+
+Actual authorized page/business requests and refreshes record activity. Status
+polls do not extend inactivity. Browser proactive renewal happens only following
+recent interaction in a visible tab. Web Locks serialize refresh across tabs, with
+a second status check after acquiring the lock; BroadcastChannel shares only an
+update notification. Tokens are never put in localStorage or channel messages.
+A current browser with Web Locks over HTTPS (or localhost development) is required
+for coordinated automatic renewal. Without it, the UI offers explicit sign-in.
+
+Expired page/download navigation goes through a renewal screen that accepts only
+safe same-origin HR/employee return paths. The full query and review ID are kept.
+Forms wait for session verification before being submitted, retaining field values
+on renewal or temporary network failure. No automatic replay of completed payroll
+writes occurs. Inactivity/absolute-expiry warnings keep unsaved form details in
+memory on the page; reload/close still discards unsaved data. The new-tab sign-in
+link uses `/login?reauth=yes` so even a still-valid session can be reauthenticated
+with a password before the absolute limit. A successful new browser login revokes
+the prior cookie's family. A different account triggers a fresh workspace load
+instead of submitting a previous user's form under the new identity.
+
+Logout can revoke a family using the refresh cookie even after the access cookie
+expires. API clients should present their access bearer token for logout; they may
+also send their refresh token as JSON to revoke after access expiry. Password reset
+and account disable revoke all families atomically with the account change.
+
+The session schema migrates without deleting accounts or payroll. Existing old
+30-minute JWT-only sessions require one new login to opt into the 10-minute JWT
+plus refresh policy. Import review expiry remains 15 minutes and is not extended
+by login renewal. A lost response after successful token rotation may require
+sign-in again; replay is not accepted as an unsafe retry grace period.
+
+Reference: https://www.rfc-editor.org/rfc/rfc9700.html#section-4.14

@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../src/auth/next.ts", () => ({
   requirePage: vi.fn(async () => mocks.principal),
   currentPrincipal: vi.fn(async () => mocks.principal),
+  pagePrincipal: vi.fn(async () => mocks.principal),
+  pageReturnTo: (path: string) => path,
 }))
 vi.mock("next/navigation.js", () => ({
   redirect: (path: string) => {

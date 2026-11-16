@@ -102,12 +102,20 @@ export async function openTestBrowser(ignoreCertificateErrors = false) {
     })
     const send = <T = unknown>(
       method: string,
-      params: Record<string, unknown> = {}
+      params: Record<string, unknown> = {},
+      sessionId?: string
     ) =>
       new Promise<T>((resolve, reject) => {
         const id = ++sequence
         pending.set(id, { resolve: (result) => resolve(result as T), reject })
-        connection.send(JSON.stringify({ id, method, params }))
+        connection.send(
+          JSON.stringify({
+            id,
+            method,
+            params,
+            ...(sessionId ? { sessionId } : {}),
+          })
+        )
       })
     const evaluate = async <T = unknown>(expression: string): Promise<T> => {
       const result = await send<{
@@ -158,6 +166,39 @@ export async function openTestBrowser(ignoreCertificateErrors = false) {
           deviceScaleFactor: 1,
           mobile: width < 700,
         })
+      },
+      newTab: async () => {
+        const { targetId } = await send<{ targetId: string }>(
+          "Target.createTarget",
+          { url: "about:blank" }
+        )
+        const { sessionId } = await send<{ sessionId: string }>(
+          "Target.attachToTarget",
+          { targetId, flatten: true }
+        )
+        const tabSend = <T = unknown>(
+          method: string,
+          params: Record<string, unknown> = {}
+        ) => send<T>(method, params, sessionId)
+        await tabSend("Page.enable")
+        await tabSend("Runtime.enable")
+        return {
+          navigate: (url: string) => tabSend("Page.navigate", { url }),
+          evaluate: async <T = unknown>(expression: string): Promise<T> => {
+            const result = await tabSend<{
+              result: { value?: T }
+              exceptionDetails?: unknown
+            }>("Runtime.evaluate", {
+              expression,
+              returnByValue: true,
+              awaitPromise: true,
+            })
+            if (result.exceptionDetails)
+              throw new Error("Secondary browser expression failed.")
+            return result.result.value as T
+          },
+          close: () => send("Target.closeTarget", { targetId }),
+        }
       },
       screenshot: async (path: string) => {
         const result = await send<{ data: string }>("Page.captureScreenshot", {
