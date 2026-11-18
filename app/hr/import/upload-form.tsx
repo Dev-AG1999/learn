@@ -1,5 +1,6 @@
 "use client"
 
+import { compressFormFiles } from "../../../src/files/browser.ts"
 import { useState, type FormEvent } from "react"
 import { Icon } from "../../components/ui-icon.tsx"
 import type { RowFailure } from "../../../src/import/types.ts"
@@ -27,6 +28,7 @@ export function UploadForm() {
     setFailures([])
     setTotal(0)
     try {
+      await compressFormFiles(form, ["sheet"])
       const response = await fetch("/hr/import/preview", {
         method: "POST",
         body: form,
@@ -121,7 +123,7 @@ export function UploadForm() {
       <div aria-live="polite" role="status">
         {pending && (
           <p className="upload-progress">
-            Checking required fields, amounts and existing payroll…
+            Compressing, scanning and checking payroll data…
           </p>
         )}
       </div>

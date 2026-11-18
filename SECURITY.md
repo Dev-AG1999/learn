@@ -216,3 +216,33 @@ by login renewal. A lost response after successful token rotation may require
 sign-in again; replay is not accepted as an unsafe retry grace period.
 
 Reference: https://www.rfc-editor.org/rfc/rfc9700.html#section-4.14
+
+## Secure uploads in existing forms
+
+See `SECURE_UPLOADS.md` for implementation, bounds, Google OAuth, antivirus,
+retention and deployment details. Browser gzip preserves original bytes; server
+bounded decompression precedes ClamAV scanning, format processing, final gzip and
+another scan. Compression never substitutes for antivirus. Scanner outages,
+stale signatures, errors, detections and oversized input fail closed.
+
+Only Google Drive is used for new stored attachments and salary sheets. HR OAuth
+uses drive.file scope, PKCE, user-bound single-use state and a matching HttpOnly
+cookie. OAuth tokens and verifiers are encrypted with AES-256-GCM under a separate
+server key. Folder/file permissions are checked; public/shared files are refused.
+Application download URLs have five-minute signatures bound to the file, user and
+expiry and still require a valid session and role/ownership. Checks include status,
+private Drive access, size and SHA-256. URLs are not public Drive sharing links.
+Redact OAuth codes, state, signed URL query values, tokens and file bodies from
+reverse-proxy/access logs. Application errors do not expose provider secrets.
+
+The changes apply to existing salary import, HR document attachments and employee
+reimbursement attachments. Existing payroll calculations and claim approvals are
+not delegated to storage or antivirus. Optional text-only forms still work. No new
+Files tabs are introduced. Previous AI upload/answer endpoints are explicitly
+blocked even if AI_DOCUMENTS_ENABLED=true, avoiding an unscanned alternate path.
+
+Antivirus cannot establish that every file is harmless. The UI labels successful
+checks as scans passed, not virus-free. Crashes/cleanup and provider quota failures
+require operational reconciliation. Retention, scanner updates and encrypted
+backups remain deployment responsibilities. No real Google credentials were
+provisioned by this change; live Drive validation follows administrator setup.

@@ -1,3 +1,21 @@
+import { gzipSync } from "node:zlib"
+import { withFiles } from "../src/files/repository.ts"
+vi.mock("../src/files/scanner.ts", () => ({
+  clamAvScanner: () => ({
+    scan: async () => ({
+      version: "ClamAV synthetic auth fixture",
+      scannedAt: Date.now(),
+    }),
+  }),
+}))
+vi.mock("../src/files/drive.ts", () => ({
+  googleDriveStore: () => ({
+    allocate: async () => crypto.randomUUID(),
+    put: async () => {},
+    get: async () => new Uint8Array(),
+    remove: async () => {},
+  }),
+}))
 import { mkdtempSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -48,6 +66,10 @@ beforeEach(async () => {
   vi.stubEnv("AUTH_JWT_SECRET", "a1".repeat(32))
   vi.stubEnv("APP_ORIGIN", origin)
   vi.stubEnv("PAYROLL_DB", join(dir, "private", "payroll.sqlite"))
+  vi.stubEnv("FILE_UPLOADS_ENABLED", "true")
+  vi.stubEnv("GOOGLE_DRIVE_CLIENT_ID", "test-only")
+  vi.stubEnv("GOOGLE_DRIVE_CLIENT_SECRET", "test-only")
+  vi.stubEnv("DRIVE_TOKEN_SECRET", "cd".repeat(32))
   await withPayroll(async (db) => {
     await db.saveMonth(base)
     await db.saveMonth({ ...base, employeeId: "emp-b" })
@@ -70,6 +92,16 @@ beforeEach(async () => {
       else employeeToken = session.token
     }
   })
+  await withFiles((db) =>
+    db.saveConnection({
+      userId: "hr-fixture",
+      driveUserId: "google-fixture",
+      folderId: "folder-fixture",
+      accessToken: "test-access",
+      refreshToken: "test-refresh",
+      expiresAt: Date.now() + 3600000,
+    })
+  )
 })
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
@@ -359,7 +391,13 @@ test("salary upload preview and confirmation persist a real sheet and refresh to
   const csv =
     "employeeId,year,month,annualCtcMinor,currency,unpaidLeaveDays,otherDeductionsMinor\nNEW-HTTP,2026,11,120000000,INR,0,0"
   const form = new FormData()
-  form.set("sheet", new File([csv], "salary.csv", { type: "text/csv" }))
+  form.set(
+    "sheet",
+    new File([new Uint8Array(gzipSync(csv))], "salary.csv", {
+      type: "application/gzip",
+    })
+  )
+  form.set("sheetEncoding", "gzip")
   const response = await preview(
     new Request(`${origin}/hr/import/preview`, {
       method: "POST",
@@ -388,7 +426,11 @@ test("salary upload preview and confirmation persist a real sheet and refresh to
 test("invalid uploads report row errors and cannot write payroll", async () => {
   const { POST: preview } = await import("../app/hr/import/preview/route.ts")
   const form = new FormData()
-  form.set("sheet", new File(["wrong,headings\nA,1"], "salary.csv"))
+  form.set(
+    "sheet",
+    new File([new Uint8Array(gzipSync("wrong,headings\nA,1"))], "salary.csv")
+  )
+  form.set("sheetEncoding", "gzip")
   const response = await preview(
     new Request(`${origin}/hr/import/preview`, {
       method: "POST",

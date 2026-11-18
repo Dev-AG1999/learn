@@ -1,3 +1,8 @@
+import { AttachmentForm } from "../../components/attachment-form.tsx"
+import {
+  AttachmentLinks,
+  loadAttachmentLinks,
+} from "../../components/attachment-links.tsx"
 import { requirePage, pageReturnTo } from "../../../src/auth/next.ts"
 import { employeeAccess } from "../../../src/access/roles.ts"
 import { withPayroll } from "../../../src/payroll-db.ts"
@@ -51,6 +56,14 @@ export default async function EmployeePayslipPage({
         ])
       : ([null, []] as const)
   })
+  const claimAttachments = Object.fromEntries(
+    await Promise.all(
+      claims.map(async (claim) => [
+        claim.id,
+        await loadAttachmentLinks(principal, "claim", claim.id),
+      ])
+    )
+  )
   const path = `/employee/${encodeURIComponent(employeeId)}`
   return (
     <Workspace principal={principal} period={period} active="payslip">
@@ -224,6 +237,9 @@ export default async function EmployeePayslipPage({
                     <td className="claim-id">{claim.id}</td>
                     <td className="receipt-cell">
                       {flagUnreadableReceipt(claim.receipt) ?? claim.receipt}
+                      <AttachmentLinks
+                        files={claimAttachments[claim.id] ?? []}
+                      />
                     </td>
                     <td>
                       <span
@@ -264,10 +280,10 @@ export default async function EmployeePayslipPage({
             </div>
             <Icon name="plus" />
           </div>
-          <form
+          <AttachmentForm
+            userId={principal.userId}
             action={`${path}/claims`}
-            method="post"
-            className="panel-body stack-form"
+            className="panel-body stack-form reimbursement-form"
           >
             <input type="hidden" name="year" value={period.year} />
             <input type="hidden" name="month" value={period.month} />
@@ -298,6 +314,18 @@ export default async function EmployeePayslipPage({
                 </span>
               </label>
             </div>
+            <label>
+              Optional receipt PDF or image
+              <input
+                name="attachment"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+              />
+            </label>
+            <p className="field-help">
+              Up to 8 MB. The attachment is compressed, virus-scanned and stored
+              privately in Google Drive.
+            </p>
             <label className="checkbox-label">
               <input type="checkbox" name="confirmed" value="yes" required />I
               confirm that the amount and receipt reference are correct.
@@ -307,7 +335,7 @@ export default async function EmployeePayslipPage({
                 Submit for review <Icon name="arrow" size={17} />
               </button>
             </div>
-          </form>
+          </AttachmentForm>
         </section>
       )}
     </Workspace>

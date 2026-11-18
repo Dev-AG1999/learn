@@ -254,3 +254,15 @@ test("directory search has an honest empty state and invalid filters do not show
   expect(html).toContain("Choose a valid period")
   expect(html).not.toContain("INR ₹1,000.00")
 })
+
+test("existing HR and employee forms include optional attachments without adding file tabs", async () => {
+  const html = renderToStaticMarkup(
+    await HrPage({
+      searchParams: Promise.resolve({ year: "2026", month: "1" }),
+    })
+  )
+  expect(html).toContain('name="attachment"')
+  expect(html).not.toContain('href="/hr/files"')
+  expect(html).not.toContain('href="/hr/assistant"')
+  expect(html).toContain("Connect Google Drive")
+})

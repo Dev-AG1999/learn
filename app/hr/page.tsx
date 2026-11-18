@@ -1,3 +1,11 @@
+import { ConnectDrive } from "../components/connect-drive.tsx"
+import { AttachmentForm } from "../components/attachment-form.tsx"
+import {
+  AttachmentLinks,
+  loadAttachmentLinks,
+} from "../components/attachment-links.tsx"
+import { withFiles } from "../../src/files/repository.ts"
+import { driveConfigured } from "../../src/files/config.ts"
 import { requirePage, pageReturnTo } from "../../src/auth/next.ts"
 import { hrAccess } from "../../src/access/roles.ts"
 import { withPayroll } from "../../src/payroll-db.ts"
@@ -23,6 +31,7 @@ export default async function HrPage({
     q?: string
     failure?: string
     notice?: string
+    storage?: string
   }>
 }) {
   const query = await searchParams
@@ -31,6 +40,7 @@ export default async function HrPage({
     undefined,
     pageReturnTo("/hr", query)
   )
+  const driveConnected = await withFiles((db) => db.connected())
   const requested =
     query.year === undefined && query.month === undefined
       ? currentPeriod()
@@ -53,6 +63,15 @@ export default async function HrPage({
     )
     return [totals, { ...page, claims }, answer] as const
   })
+  const documentAttachments = await loadAttachmentLinks(principal, "document")
+  const claimAttachments = Object.fromEntries(
+    await Promise.all(
+      pending.claims.map(async (claim) => [
+        claim.id,
+        await loadAttachmentLinks(principal, "claim", claim.id),
+      ])
+    )
+  )
   const count = totals.reduce((sum, total) => sum + total.employeeCount, 0)
   const nextQuery = new URLSearchParams({
     year: String(period.year),
@@ -298,6 +317,7 @@ export default async function HrPage({
                     Receipt:{" "}
                     {flagUnreadableReceipt(claim.receipt) ?? claim.receipt}
                   </span>
+                  <AttachmentLinks files={claimAttachments[claim.id] ?? []} />
                 </div>
                 <div className="claim-amount">
                   {claim.currency
@@ -345,14 +365,16 @@ export default async function HrPage({
           <div className="panel-heading">
             <div>
               <h2>HR policy library</h2>
-              <p>Add policy text for your team's reference.</p>
+              <p>
+                Add policy text or attach a document for your team's reference.
+              </p>
             </div>
             <Icon name="file" />
           </div>
-          <form
-            className="panel-body stack-form"
+          <AttachmentForm
+            userId={principal.userId}
+            className="panel-body stack-form hr-document-form"
             action="/hr/documents"
-            method="post"
           >
             <input type="hidden" name="year" value={period.year} />
             <input type="hidden" name="month" value={period.month} />
@@ -370,17 +392,60 @@ export default async function HrPage({
                 name="body"
                 rows={5}
                 placeholder="Paste the approved policy text here…"
-                required
               />
             </label>
+            <label>
+              Optional PDF or image
+              <input
+                name="attachment"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+              />
+            </label>
+            <p className="field-help">
+              Attachments are compressed and scanned before private Google Drive
+              storage. Up to 8 MB; plain PDF, JPEG or PNG.
+            </p>
             <p className="field-help">
               Saving an existing document ID replaces its policy text.
             </p>
             <button className="button button-secondary">
               <Icon name="plus" size={16} />
-              Save policy text
+              Save document
             </button>
-          </form>
+          </AttachmentForm>
+
+          <div className="panel-body">
+            <p className="field-help">
+              Google Drive: {driveConnected ? "connected" : "not connected"}.
+              Antivirus must be running before file uploads.
+            </p>
+            <ConnectDrive
+              configured={driveConfigured()}
+              connected={driveConnected}
+              userId={principal.userId}
+            />
+
+            {!driveConfigured() && (
+              <p className="field-help">
+                Configure Google OAuth and the Drive token encryption key in
+                .env.local. See SECURE_UPLOADS.md.
+              </p>
+            )}
+            {query.storage && (
+              <p role="status">
+                {query.storage === "connected"
+                  ? "Google Drive connected."
+                  : "Drive connection did not complete. Check setup and reconnect the original Google account."}
+              </p>
+            )}
+            {query.notice === "attachment-saved" && (
+              <p role="status">
+                Attachment stored in Google Drive. Download it below.
+              </p>
+            )}
+            <AttachmentLinks files={documentAttachments} />
+          </div>
         </section>
         <section className="panel" id="knowledge">
           <div className="panel-heading">

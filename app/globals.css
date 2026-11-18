@@ -1694,3 +1694,8 @@ tbody tr:hover {
     flex-direction: column;
   }
 }
+
+
+.attachment-fields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 18px; }
+.attachment-links { padding-left: 20px; margin: 10px 0; overflow-wrap: anywhere; }
+.attachment-links li + li { margin-top: 8px; }

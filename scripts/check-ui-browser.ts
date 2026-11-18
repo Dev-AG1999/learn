@@ -1,3 +1,5 @@
+import { withFiles } from "../src/files/repository.ts"
+import { scannerFixture } from "./scanner-fixture.ts"
 import { DatabaseSync } from "node:sqlite"
 import assert from "node:assert/strict"
 import { spawn, execFileSync } from "node:child_process"
@@ -51,6 +53,7 @@ const originalDb = process.env.PAYROLL_DB
 process.env.PAYROLL_DB = join(dir, "payroll.sqlite")
 let server: ReturnType<typeof spawn> | undefined
 let proxy: ReturnType<typeof createHttpsServer> | undefined
+let scanner: ReturnType<typeof scannerFixture> | undefined
 let browser: Awaited<ReturnType<typeof openTestBrowser>> | undefined
 try {
   const portReservation = createHttpServer()
@@ -145,9 +148,25 @@ try {
     db.provision("test-hr", hash, "hr", null)
     db.provision("test-employee", hash, "employee", "test-a")
   })
+  const tokenKey = randomBytes(32).toString("hex")
+  process.env.DRIVE_TOKEN_SECRET = tokenKey
+  await withFiles((db) =>
+    db.saveConnection({
+      userId: "browser-hr",
+      driveUserId: "browser-google",
+      folderId: "browser-folder",
+      accessToken: "synthetic-access",
+      refreshToken: "synthetic-refresh",
+      expiresAt: Date.now() + 3600000,
+    })
+  )
+  scanner = scannerFixture()
+  const scannerPort = await listen(scanner)
   server = spawn(
     process.execPath,
     [
+      "--import",
+      new URL("./mock-drive-preload.mjs", import.meta.url).href,
       "node_modules/next/dist/bin/next",
       "start",
       "--hostname",
@@ -161,6 +180,16 @@ try {
         NODE_ENV: "production",
         AUTH_JWT_SECRET: randomBytes(32).toString("hex"),
         APP_ORIGIN: origin,
+        FILE_UPLOADS_ENABLED: "true",
+        GOOGLE_DRIVE_CLIENT_ID: "synthetic-unused-id",
+        GOOGLE_DRIVE_CLIENT_SECRET: "synthetic-unused-secret",
+        DRIVE_TOKEN_SECRET: tokenKey,
+        CLAMAV_HOST: "127.0.0.1",
+        CLAMAV_PORT: String(scannerPort),
+        AI_DOCUMENTS_ENABLED: "false",
+        LANGSMITH_TRACING: "false",
+        LANGCHAIN_TRACING_V2: "false",
+        LANGCHAIN_TRACING: "false",
       },
       stdio: "ignore",
     }
@@ -187,7 +216,26 @@ try {
   assert.ok(ready, "Production test server did not start.")
   browser = await openTestBrowser(true) // Only this isolated profile trusts the ephemeral test certificate.
   const hydrationFailures: string[] = []
+  let driveCspBlocked = false
+  let driveConnectRequests = 0
   browser.on((message) => {
+    if (message.method === "Network.requestWillBeSent") {
+      const request = (
+        message.params as { request?: { url?: string; method?: string } }
+      )?.request
+      if (
+        request?.url &&
+        new URL(request.url).pathname === "/api/storage/drive/connect" &&
+        request.method === "POST"
+      )
+        driveConnectRequests++
+    }
+
+    if (
+      message.method === "Log.entryAdded" &&
+      /form-action/.test(JSON.stringify(message.params))
+    )
+      driveCspBlocked = true
     if (
       [
         "Runtime.exceptionThrown",
@@ -235,6 +283,79 @@ try {
       `location.pathname === ${JSON.stringify(expectedPath)} && !!document.querySelector('.workspace')`
     )
   }
+  const checkInlineAttachment = async (employee: boolean) => {
+    const path = employee
+      ? "/employee/test-a?year=2026&month=1"
+      : "/hr?year=2026&month=1"
+    await browser!.navigate(`${origin}${path}`)
+    const fixturePath = join(dir, "inline-receipt.pdf")
+    const { payslipPdf } = await import("../src/payslip-document.ts")
+    writeFileSync(
+      fixturePath,
+      payslipPdf({
+        employeeId: "test-a",
+        year: 2026,
+        month: 1,
+        currency: "INR",
+        monthlyGrossMinor: 100000,
+        unpaidDeductionMinor: 0,
+        otherDeductionsMinor: 0,
+        approvedReimbursementsMinor: 0,
+        netMinor: 100000,
+      })
+    )
+    const dom = await browser!.send<{ root: { nodeId: number } }>(
+      "DOM.getDocument"
+    )
+    const input = await browser!.send<{ nodeId: number }>("DOM.querySelector", {
+      nodeId: dom.root.nodeId,
+      selector: 'input[name="attachment"]',
+    })
+    await browser!.send("DOM.setFileInputFiles", {
+      nodeId: input.nodeId,
+      files: [fixturePath],
+    })
+    await browser!.evaluate(
+      employee
+        ? `
+      const form=document.querySelector('.reimbursement-form');
+      form.querySelector('[name=amountMinor]').value='500';
+      form.querySelector('[name=receipt]').value='Inline receipt browser check';
+      form.querySelector('[name=confirmed]').checked=true;
+      form.requestSubmit();
+    `
+        : `
+      const form=document.querySelector('.hr-document-form');
+      form.querySelector('[name=documentId]').value='browser-policy';
+      form.querySelector('[name=body]').value='Browser policy text';
+      form.requestSubmit();
+    `
+    )
+    await browser!.waitFor(
+      employee
+        ? "location.search.includes('notice=claim-submitted')"
+        : "location.search.includes('notice=document-saved')"
+    )
+    await browser!.waitFor(
+      "!!document.querySelector('.attachment-links a[href*=signature]')"
+    )
+    assert.equal(
+      await browser!.evaluate(
+        '!!document.querySelector(\'a[href="/hr/files"],a[href*="/assistant"]\')'
+      ),
+      false
+    )
+    await capture(
+      employee ? "employee-inline-attachment" : "hr-inline-attachment",
+      1440
+    )
+    await capture(
+      employee
+        ? "employee-inline-attachment-mobile"
+        : "hr-inline-attachment-mobile",
+      390
+    )
+  }
   await browser.navigate(`${origin}/login`)
   await capture("login-desktop", 1440)
   await capture("login-mobile", 390)
@@ -242,7 +363,70 @@ try {
   await browser.waitFor(
     "document.body.innerText.includes('No payroll for this month')"
   )
+  const checkDriveConnection = async () => {
+    driveCspBlocked = false
+    driveConnectRequests = 0
+    await browser!.navigate(`${origin}/hr`)
+    await browser!.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: "https://accounts.google.com/*",
+          requestStage: "Request",
+        },
+      ],
+    })
+    const stopDriveFixture = browser!.on((message) => {
+      if (message.method !== "Fetch.requestPaused") return
+      const params = message.params as {
+        requestId: string
+        request: { url: string }
+      }
+      if (new URL(params.request.url).origin !== "https://accounts.google.com")
+        return
+      void browser!.send("Fetch.fulfillRequest", {
+        requestId: params.requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "text/html" }],
+        body: Buffer.from(
+          "<html><body>Synthetic Google consent endpoint</body></html>"
+        ).toString("base64"),
+      })
+    })
+    await browser!.evaluate(`(() => {
+    const original=window.fetch.bind(window);let fail=true;
+    window.fetch=(input,init)=>{
+      if(String(input)==='/api/storage/drive/connect'&&fail){fail=false;return Promise.resolve(Response.json({error:'Synthetic connection failure'},{status:503}));}
+      return original(input,init);
+    };
+    document.querySelector('[data-drive-connect]').click();
+  })()`)
+    await browser!.waitFor(
+      "document.body.innerText.includes('Synthetic connection failure') && !document.querySelector('[data-drive-connect]').disabled"
+    )
+    await browser!.evaluate(
+      "const connectButton=document.querySelector('[data-drive-connect]'); connectButton.click(); connectButton.click()"
+    )
+    await browser!.waitFor(
+      "location.origin === 'https://accounts.google.com' && document.body.innerText.includes('Synthetic Google consent endpoint')"
+    )
+    assert.equal(
+      driveCspBlocked,
+      false,
+      "Google connection navigation must not violate form-action CSP"
+    )
+    assert.equal(
+      driveConnectRequests,
+      1,
+      "Repeated clicks must start only one authorization request"
+    )
+    await browser!.navigate(`${origin}/hr`)
+    stopDriveFixture()
+    await browser!.send("Fetch.disable")
+  }
+
   await capture("hr-empty", 1440)
+  await checkInlineAttachment(false)
+  await browser.navigate(`${origin}/hr`)
   const expireAccess = () => {
     const raw = new DatabaseSync(process.env.PAYROLL_DB!)
     try {
@@ -454,6 +638,7 @@ try {
     )?.annualCtcMinor,
     144000000
   )
+  await checkDriveConnection()
   await browser.evaluate(
     "document.querySelector('.sidebar-account form').requestSubmit()"
   )
@@ -465,6 +650,7 @@ try {
     await browser.evaluate("!!document.querySelector('a[href^=\"/hr\"]')"),
     false
   )
+  await checkInlineAttachment(true)
   await browser.navigate(`${origin}/employee/test-a?year=2026&month=1`)
   await capture("employee-desktop", 1440)
   await capture("employee-mobile", 390)
@@ -486,7 +672,7 @@ try {
     "Browser hydration must succeed even when browser and server currency metadata differ."
   )
   console.log(
-    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, manual employee creation, CSV/Excel upload and confirmed import, silent session recovery and cross-tab refresh, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
+    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, manual employee creation, CSV/Excel upload and confirmed import, silent session recovery and cross-tab refresh, inline compressed attachments, virus protocol checks and signed URLs, Google consent navigation and retry, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
   )
 } catch (error) {
   if (browser) {
@@ -495,7 +681,9 @@ try {
       .catch(() => undefined)
     console.error(
       "UI test stopped at:",
-      await browser.evaluate("location.href").catch(() => "unavailable")
+      await browser
+        .evaluate("location.origin + location.pathname")
+        .catch(() => "unavailable")
     )
   }
   throw error
@@ -505,6 +693,7 @@ try {
     server.kill("SIGTERM")
     await new Promise<void>((resolve) => server!.once("exit", () => resolve()))
   }
+  await stop(scanner)
   await stop(proxy)
   rmSync(dir, { recursive: true, force: true })
   if (originalDb === undefined) delete process.env.PAYROLL_DB

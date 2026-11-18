@@ -174,3 +174,27 @@ the live AI milestone, not before finishing the employee directory.
 The rotating-session proposal is now implemented in the subsequent refresh
 milestone. See `SECURITY.md` for actual policy, API contracts and migration notes.
 Document ingestion and live AI integration remain proposed future milestones.
+
+## Clarified PDF scope and implementation update
+
+The user's subsequent clarification requests Q&A over the selected uploaded PDF,
+including S3 storage, rather than implicit policy retrieval. This milestone now
+implements that path with LangChain splitters/model adapters, a bounded LangGraph
+retrieval/generation graph, Qdrant vectors and private S3 objects. The earlier
+FTS5/no-framework recommendation above is retained as review history, not the
+implemented PDF architecture. Payroll stays in SQLite. See `DOCUMENT_AI.md` for
+actual behavior, configuration, verification and limitations. Notifications and
+AI-assisted salary-sheet review remain separate future milestones.
+
+Local inference is now selectable through `AI_PROVIDER=ollama`, using LangChain's
+Ollama adapters with Qwen3 and Nomic. LangGraph and S3 remain; Qdrant collections
+are isolated by embedding profile. OpenAI remains an explicit alternative, with no
+paid fallback from local mode. This extends the same uncommitted PDF milestone.
+
+## Superseding user direction: secure uploads first, no additional upload tabs
+
+The active milestone now secures file submissions within existing forms, replaces
+S3 with private Google Drive, and returns signed application URLs. Google Drive
+is storage only; client/server gzip is not a malware guarantee. ClamAV scans
+original and final bytes with fail-closed behavior. AI is explicitly deferred;
+earlier prototypes remain inactive. See SECURE_UPLOADS.md for current behavior.

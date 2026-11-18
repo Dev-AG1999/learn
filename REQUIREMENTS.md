@@ -245,3 +245,37 @@ The isolated browser test expires access sessions in its synthetic database,
 restores the exact URL, renews simultaneously in two tabs and submits a salary
 form without losing entered values, in addition to the existing payroll/import
 and role-isolation checks. No production credentials or payroll values are logged.
+
+## Uploaded-PDF AI milestone
+
+The user's clarified scope supersedes the earlier restriction that an employee
+assistant can only paraphrase a database payslip. Both roles now have a separate
+Document assistant for their authorized, selected uploaded PDF. It does not
+implicitly fetch policies or payroll. Employee uploads are visible to their owner
+and authorized HR; HR uploads are not automatically published to employees.
+
+Implementation uses LangChain, LangGraph, OpenAI, Qdrant and private S3, with
+SQLite ownership/chunks, authenticated downloads, explicit processing consent,
+validation, page citations and safe provider failures. It cannot change pay or
+submit/approve a reimbursement. See `DOCUMENT_AI.md` for setup, limits and test
+scope. Existing saved-payroll explanations and HR exact-text policy lookup remain.
+Notifications for uploads, claims, approvals and payslip processing remain the next
+separate milestone; no email, push or in-app notification delivery is added here.
+
+The uploaded-PDF milestone also offers `AI_PROVIDER=ollama` for free local model
+inference using Qwen3 and Nomic embeddings, while retaining S3 and Qdrant. OpenAI
+is optional in this mode; no silent paid fallback exists. Provider-specific vector
+collections and saved document profiles prevent incompatible retrieval. See
+`DOCUMENT_AI.md` for installation, configuration and migration behavior. This is
+an adjustment to the current AI milestone, not implementation of notifications.
+
+## Current priority: compression and scanning in existing upload locations
+
+This direction supersedes the earlier uncommitted document-assistant milestone.
+No new upload/File tabs are added. Existing salary-sheet import, HR document and
+employee receipt forms use a shared browser-gzip -> bounded decompression ->
+ClamAV -> deterministic format validation -> server gzip -> final scan -> private
+Google Drive pipeline. Existing forms show signed, user-bound five-minute download
+links. Scanner unavailable/stale/errors fail closed. Google OAuth setup is inline
+in the existing HR document section. S3 is removed; AI is disabled/deferred. See
+SECURE_UPLOADS.md for configuration, verification and practical limitations.

@@ -1,3 +1,7 @@
+import {
+  AttachmentLinks,
+  loadAttachmentLinks,
+} from "../../../../components/attachment-links.tsx"
 import { requirePage, pageReturnTo } from "../../../../../src/auth/next.ts"
 import { withPayroll } from "../../../../../src/payroll-db.ts"
 import {
@@ -30,6 +34,9 @@ export default async function PayrollReviewPage({
   const draft = await withPayroll((db) =>
     db.getPayrollDraft(draftId, principal.userId, Number(query.page ?? 1))
   )
+  const attachments = draft
+    ? await loadAttachmentLinks(principal, "import", draftId)
+    : []
   const period = draft?.period ?? currentPeriod()
   return (
     <Workspace
@@ -50,6 +57,7 @@ export default async function PayrollReviewPage({
             : "Check the employee IDs, period and amounts before committing any changes."
         }
       />
+      {draft && <AttachmentLinks files={attachments} />}
       {!draft ? (
         <section className="panel">
           <EmptyState
