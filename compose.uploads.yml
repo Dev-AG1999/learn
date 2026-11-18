@@ -1,0 +1,15 @@
+# Local-only antivirus. Initial signature download can take several minutes.
+services:
+  clamav:
+    image: clamav/clamav:1.5.4
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:3310:3310"
+    environment:
+      TZ: UTC
+    volumes:
+      - clamav_signatures:/var/lib/clamav
+      - ./config/clamd.conf:/etc/clamav/clamd.conf:ro
+    mem_limit: 4g
+volumes:
+  clamav_signatures:
