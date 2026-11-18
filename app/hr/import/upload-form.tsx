@@ -1,17 +1,21 @@
 "use client"
+import { apiFetch } from "../../../src/client/api.ts"
 
 import { compressFormFiles } from "../../../src/files/browser.ts"
-import { useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent } from "react"
+import { ensureSession } from "../../../src/auth/browser.ts"
 import { Icon } from "../../components/ui-icon.tsx"
 import type { RowFailure } from "../../../src/import/types.ts"
 import { MAX_FILE_BYTES } from "../../../src/import/types.ts"
 
 export function UploadForm() {
+  const inFlight = useRef(false)
   const [pending, setPending] = useState(false)
   const [failures, setFailures] = useState<RowFailure[]>([])
   const [total, setTotal] = useState(0)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (inFlight.current) return
     const form = new FormData(event.currentTarget)
     const file = form.get("sheet")
     if (!(file instanceof File) || !file.size || file.size > MAX_FILE_BYTES) {
@@ -24,12 +28,14 @@ export function UploadForm() {
       setTotal(1)
       return
     }
+    inFlight.current = true
     setPending(true)
     setFailures([])
     setTotal(0)
     try {
       await compressFormFiles(form, ["sheet"])
-      const response = await fetch("/hr/import/preview", {
+      await ensureSession()
+      const response = await apiFetch("/hr/import/preview", {
         method: "POST",
         body: form,
       })
@@ -67,12 +73,14 @@ export function UploadForm() {
       ])
       setTotal(1)
     } finally {
+      inFlight.current = false
       setPending(false)
     }
   }
   return (
     <form
       onSubmit={submit}
+      data-session-managed="true"
       action="/hr/import/preview"
       method="post"
       encType="multipart/form-data"

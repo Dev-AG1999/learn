@@ -1,5 +1,6 @@
 "use client"
-import { useState, type MouseEvent } from "react"
+import { apiFetch } from "../../src/client/api.ts"
+import { useRef, useState, type MouseEvent } from "react"
 import { ensureSession } from "../../src/auth/browser.ts"
 export function AttachmentDownload({
   id,
@@ -14,16 +15,18 @@ export function AttachmentDownload({
 }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false)
+  const pending = useRef(false)
   async function download(event: MouseEvent<HTMLAnchorElement>) {
     event.preventDefault()
-    if (busy) return
+    if (pending.current) return
+    pending.current = true
     setBusy(true)
     setError("")
     try {
       const session = await ensureSession()
       if (session.timing.userId !== userId)
         throw new Error("Your account changed. Reload before downloading.")
-      const refreshed = await fetch(
+      const refreshed = await apiFetch(
         `/api/files/${encodeURIComponent(id)}/link`,
         { credentials: "same-origin", cache: "no-store" }
       )
@@ -38,7 +41,7 @@ export function AttachmentDownload({
         )
       )
         throw new Error(data.error ?? "Download is unavailable.")
-      const response = await fetch(data.signedUrl, {
+      const response = await apiFetch(data.signedUrl, {
         credentials: "same-origin",
         cache: "no-store",
       })
@@ -62,6 +65,7 @@ export function AttachmentDownload({
           : "Download failed. Please retry."
       )
     } finally {
+      pending.current = false
       setBusy(false)
     }
   }

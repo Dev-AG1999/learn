@@ -514,6 +514,29 @@ try {
   await browser.waitFor(
     "document.querySelector('main').innerText.includes('test-a')"
   )
+  // Verify actual browser requests: debounce rapid typing, then reuse a fresh result.
+  await browser.evaluate(`(() => {
+    window.__directoryRequests = 0;
+    const original = window.fetch;
+    window.fetch = (...args) => {
+      if (String(args[0]).startsWith('/api/employees?')) window.__directoryRequests++;
+      return original(...args);
+    };
+    const input = document.querySelector('input[name="q"]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    for (const value of ['t', 'te', 'test-b']) {
+      setter.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  })()`)
+  await browser.waitFor("location.search.includes('q=test-b') && document.querySelector('tbody').innerText.includes('test-b')")
+  assert.equal(await browser.evaluate("window.__directoryRequests"), 1)
+  await browser.evaluate("document.querySelector('.employee-directory-filters').requestSubmit()")
+  await delay(650)
+  assert.equal(await browser.evaluate("window.__directoryRequests"), 1)
+  await browser.evaluate("document.querySelector('.employee-directory-filters button[type=button]').click()")
+  await browser.waitFor("window.__directoryRequests === 2 && !document.querySelector('[aria-busy=true]')")
   await capture("employee-directory-desktop", 1440)
   await capture("employee-directory-mobile", 390)
   await browser.navigate(

@@ -96,7 +96,8 @@ export function SessionNotice({ userId }: { userId: string }) {
         return
       if (
         (form.getAttribute("method") ?? "").toLowerCase() === "get" ||
-        form.getAttribute("action") === "/auth/logout"
+        form.getAttribute("action") === "/auth/logout" ||
+        form.dataset.sessionManaged === "true"
       )
         return
       if (replaying.has(form)) {
@@ -194,6 +195,7 @@ export function SessionNotice({ userId }: { userId: string }) {
         : null
     if (channel)
       channel.onmessage = () => {
+        if (document.visibilityState !== "visible") return
         void sessionStatus()
           .then((next) => {
             if (next) accepted(next)

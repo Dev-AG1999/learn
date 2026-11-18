@@ -1,4 +1,5 @@
 "use client"
+import { apiFetch } from "../client/api.ts"
 
 import { RENEW_WINDOW_SECONDS, type SessionTiming } from "./policy.ts"
 
@@ -33,8 +34,14 @@ function decoded(value: unknown): BrowserSession {
   return { timing, receivedAt: performance.now() }
 }
 
-export async function sessionStatus(): Promise<BrowserSession | null> {
-  const response = await fetch("/api/auth/session", {
+let statusRequest: Promise<BrowserSession | null> | null = null
+export function sessionStatus(): Promise<BrowserSession | null> {
+  if (!statusRequest) statusRequest = loadSessionStatus().finally(() => { statusRequest = null })
+  return statusRequest
+}
+
+async function loadSessionStatus(): Promise<BrowserSession | null> {
+  const response = await apiFetch("/api/auth/session", {
     credentials: "same-origin",
     cache: "no-store",
   })
@@ -69,7 +76,7 @@ export function ensureSession(): Promise<BrowserSession> {
         throw new SessionExpired(
           "Please sign in again to enable session renewal."
         )
-      const response = await fetch("/auth/refresh", {
+      const response = await apiFetch("/auth/refresh", {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",

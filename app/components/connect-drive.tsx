@@ -1,4 +1,5 @@
 "use client"
+import { apiFetch } from "../../src/client/api.ts"
 
 import { useRef, useState } from "react"
 import { ensureSession } from "../../src/auth/browser.ts"
@@ -41,7 +42,7 @@ export function ConnectDrive({
         throw new Error(
           "Your account changed. Reload before connecting Google Drive."
         )
-      const response = await fetch("/api/storage/drive/connect", {
+      const response = await apiFetch("/api/storage/drive/connect", {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",

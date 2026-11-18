@@ -1,0 +1,71 @@
+import { afterEach, expect, test, vi } from "vitest"
+import { JsonReadCache, debounce, throttle, canonicalQuery, apiFetch, requestDiagnostics } from "../src/client/api.ts"
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+test("identical reads share one request and return isolated JSON snapshots", async () => {
+  const cache = new JsonReadCache()
+  const load = vi.fn(async () => ({ rows: ["EMP-1"] }))
+  const [a, b] = await Promise.all([cache.read("q=EMP", load), cache.read("q=EMP", load)])
+  a.rows.push("local edit")
+  expect(b.rows).toEqual(["EMP-1"])
+  expect(await cache.read("q=EMP", load)).toEqual(b)
+  expect(load).toHaveBeenCalledTimes(1)
+  expect(cache.diagnostics).toMatchObject({ network: 1, hits: 1, shared: 1 })
+})
+test("expiry, LRU eviction and invalidation force fresh reads", async () => {
+  vi.useFakeTimers()
+  const cache = new JsonReadCache(100, 2)
+  const load = vi.fn(async () => 1)
+  await cache.read("a", load); await cache.read("b", load); await cache.read("a", load)
+  await cache.read("c", load); await cache.read("b", load)
+  expect(load).toHaveBeenCalledTimes(4)
+  vi.advanceTimersByTime(101)
+  await cache.read("b", load)
+  cache.clear()
+  await cache.read("b", load)
+  expect(load).toHaveBeenCalledTimes(6)
+})
+test("failed requests and requests invalidated in flight cannot populate cache", async () => {
+  const cache = new JsonReadCache()
+  await expect(cache.read("a", async () => { throw Error("offline") })).rejects.toThrow("offline")
+  let release!: (value: number) => void
+  const pending = cache.read("a", () => new Promise<number>((resolve) => { release = resolve }))
+  await Promise.resolve()
+  cache.clear(); release(1); await pending
+  const load = vi.fn(async () => 2)
+  expect(await cache.read("a", load)).toBe(2)
+  expect(load).toHaveBeenCalledTimes(1)
+})
+test("debounce emits only final input and can be cancelled; throttle bounds clicks", () => {
+  vi.useFakeTimers()
+  const run = vi.fn(), delayed = debounce(run)
+  delayed("E"); delayed("EMP"); vi.advanceTimersByTime(299)
+  expect(run).not.toHaveBeenCalled()
+  vi.advanceTimersByTime(1); expect(run).toHaveBeenCalledWith("EMP")
+  delayed("cancel"); delayed.cancel(); vi.advanceTimersByTime(500)
+  expect(run).toHaveBeenCalledTimes(1)
+  const click = throttle(run)
+  click(); click(); expect(run).toHaveBeenCalledTimes(2)
+  vi.advanceTimersByTime(500); click(); expect(run).toHaveBeenCalledTimes(3)
+})
+test("canonical keys ignore parameter order and diagnostics retain no request details", async () => {
+  expect(canonicalQuery(new URLSearchParams("q=EMP&month=1"))).toBe(canonicalQuery(new URLSearchParams("month=1&q=EMP")))
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ok: true })))
+  const before = requestDiagnostics()
+  await apiFetch("/api/private?secret=hidden")
+  expect(requestDiagnostics()).toEqual({ ...before, started: before.started + 1 })
+  expect(JSON.stringify(requestDiagnostics())).not.toContain("secret")
+})
+
+test("separate account caches cannot share responses", async () => {
+  const first = new JsonReadCache(), second = new JsonReadCache()
+  expect(await first.read("same", async () => "hr-a")).toBe("hr-a")
+  expect(await second.read("same", async () => "hr-b")).toBe("hr-b")
+})
+
+test("initial server results seed the cache without another data request", async () => {
+  const cache = new JsonReadCache()
+  cache.seed("q=EMP", { rows: ["EMP-1"] })
+  const load = vi.fn(async () => ({ rows: [] as string[] }))
+  expect(await cache.read("q=EMP", load)).toEqual({ rows: ["EMP-1"] })
+  expect(load).not.toHaveBeenCalled()
+})

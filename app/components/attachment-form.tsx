@@ -1,4 +1,5 @@
 "use client"
+import { apiFetch } from "../../src/client/api.ts"
 import { useState, useRef, type ReactNode, type FormEvent } from "react"
 import { compressFormFiles } from "../../src/files/browser.ts"
 import { ensureSession } from "../../src/auth/browser.ts"
@@ -31,7 +32,7 @@ export function AttachmentForm({
       if (session.timing.userId !== userId)
         throw new Error("Your account changed. Reload before submitting.")
       setPhase("Scanning and storing attachment…")
-      const response = await fetch(action, {
+      const response = await apiFetch(action, {
         method: "POST",
         body: form,
         headers: { Accept: "application/json" },
@@ -67,6 +68,7 @@ export function AttachmentForm({
       encType="multipart/form-data"
       className={className}
       onSubmit={submit}
+      data-session-managed="true"
     >
       <fieldset disabled={!!phase} className="attachment-fields">
         {children}

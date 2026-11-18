@@ -54,7 +54,7 @@ export async function openTestBrowser(ignoreCertificateErrors = false) {
     rmSync(profile, {
       recursive: true,
       force: true,
-      maxRetries: 5,
+      maxRetries: 30,
       retryDelay: 100,
     })
   }
