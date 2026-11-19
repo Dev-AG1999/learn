@@ -13,7 +13,8 @@
     "test:auth:http": "node --experimental-strip-types scripts/smoke-auth.ts",
     "test:auth:browser": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/check-login-browser.ts",
     "test:ui:browser": "node --experimental-strip-types scripts/check-ui-browser.ts",
-    "test:uploads:scanner": "node --experimental-strip-types scripts/check-upload-scanner.ts"
+    "test:uploads:scanner": "node --experimental-strip-types scripts/check-upload-scanner.ts",
+    "db:encrypt": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/encrypt-database.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -28,6 +29,7 @@
     "@langchain/ollama": "^1.3.0",
     "@langchain/openai": "^1.8.4",
     "@langchain/textsplitters": "^1.0.2",
+    "better-sqlite3-multiple-ciphers": "^13.2.0",
     "fflate": "^0.8.3",
     "jose": "^6.2.17",
     "next": "^16.4.6",

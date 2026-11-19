@@ -96,10 +96,10 @@ The application sets its SQLite file to owner-read/write (0600), creates new
 parent directories as 0700, and rejects a symlink for the database file. Keep the
 persistent directory private, run as a dedicated OS user and keep backups private.
 `.env*` (except the example) and database files are ignored by Git. Trusted local
-code and host administrators can still open SQLite directly. Application roles
+code and host administrators with the database key can still read application data. Application roles
 do not replace host access controls.
 
-SQLite remains **unencrypted at rest**. Use encrypted persistent volumes and
+SQLite now supports **database-at-rest encryption** through the shared connection factory; production requires DATABASE_ENCRYPTION_KEY. Existing plaintext databases need an offline migration; see DATABASE_ENCRYPTION.md. Also use encrypted persistent volumes and
 backups supplied by the deployment environment, HTTPS termination, a secret
 manager for the signing key and restricted host access. Do not claim database
 file permissions or JWT signing encrypt payroll data. Validate these deployment
@@ -163,7 +163,7 @@ and 10,000 rows. Excel ZIP size, entry count, worksheet dimensions, formulas,
 macros, external links and XML entities are checked before the XLSX reader runs.
 Only normalized review inputs are stored, not the raw uploaded file. Up to three
 recent reviews per account and 50 globally bound temporary storage. Expired data
-is cleaned during subsequent staging; SQLite and backup encryption remain a
+is cleaned during subsequent staging; legacy plaintext databases and backup encryption remain a
 host/deployment responsibility. Do not send file contents to logs or AI services.
 Employee salary creation does not create authentication accounts or passwords.
 
@@ -246,3 +246,5 @@ checks as scans passed, not virus-free. Crashes/cleanup and provider quota failu
 require operational reconciliation. Retention, scanner updates and encrypted
 backups remain deployment responsibilities. No real Google credentials were
 provisioned by this change; live Drive validation follows administrator setup.
+
+Database encryption setup, migration, key management, and explicit limits are documented in [DATABASE_ENCRYPTION.md](DATABASE_ENCRYPTION.md).

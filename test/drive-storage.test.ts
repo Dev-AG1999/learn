@@ -11,6 +11,7 @@ import {
   googleDriveStore,
   finishDriveAuthorization,
   DRIVE_SCOPE,
+  driveApi,
 } from "../src/files/drive.ts"
 import { seal, unseal } from "../src/files/crypto.ts"
 let dir: string, repository: FileRepository, path: string
@@ -216,4 +217,37 @@ test("same-account reconnection retains folder and can recover after token-key r
   expect(repository.connection()!.refreshToken).toBe("new-refresh")
   const token = mock.requests[0]
   expect(String(token.init.body)).toContain("code_verifier=verifier")
+})
+
+
+test("Drive storage quota failures explain the required action without exposing provider details", async () => {
+  const network: typeof fetch = async () => Response.json({ error: {
+    message: "private Google account and file information",
+    errors: [{ reason: "storageQuotaExceeded" }],
+  } }, { status: 403 })
+  await expect(driveApi("secret-token", network).request("/upload/drive/v3/files"))
+    .rejects.toMatchObject({ status: 507, message: expect.stringContaining("storage limit") })
+  try { await driveApi("secret-token", network).request("/upload/drive/v3/files") }
+  catch (error) {
+    expect(String(error)).not.toContain("private Google")
+    expect(String(error)).not.toContain("secret-token")
+  }
+})
+
+test("Drive errors distinguish reconnect and retry cases, with bounded safe fallbacks", async () => {
+  for (const [status, reason, expectedStatus, text] of [
+    [401, "authError", 503, "reconnect the same"],
+    [403, "userRateLimitExceeded", 429, "Wait a moment"],
+    [429, "rateLimitExceeded", 429, "Wait a moment"],
+    [500, "backendError", 503, "request failed"],
+  ] as const) {
+    const network: typeof fetch = async () => Response.json({ error: { errors: [{ reason }] } }, { status })
+    await expect(driveApi("token", network).request("/drive/v3/files"))
+      .rejects.toMatchObject({ status: expectedStatus, message: expect.stringContaining(text) })
+  }
+  for (const body of ["not JSON", "x".repeat(9000), JSON.stringify({ error: { errors: [null, 1, {}] } })]) {
+    const network: typeof fetch = async () => new Response(body, { status: 403 })
+    await expect(driveApi("token", network).request("/drive/v3/files"))
+      .rejects.toMatchObject({ status: 503, message: expect.stringContaining("request failed") })
+  }
 })

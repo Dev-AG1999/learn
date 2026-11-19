@@ -1,6 +1,6 @@
 import { jwtKey } from "./config.ts"
 import { createHash, randomUUID } from "node:crypto"
-import { DatabaseSync } from "node:sqlite"
+import { openStorageDatabase } from "../db/connection.ts"
 import { openPayrollDatabase } from "../db/sqlite-payroll.ts"
 import {
   ABSOLUTE_SECONDS,
@@ -86,7 +86,7 @@ export type AuthRepository = {
 export function openAuthRepository(path: string): AuthRepository {
   // Auth and payroll share the same SQLite engine and persistent file.
   openPayrollDatabase(path).close()
-  const db = new DatabaseSync(path)
+  const db = openStorageDatabase(path)
   db.exec(`
     PRAGMA foreign_keys = ON;
     PRAGMA busy_timeout = 5000;

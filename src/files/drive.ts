@@ -63,11 +63,41 @@ export function driveApi(accessToken: string, network: typeof fetch = fetch) {
       cache: "no-store",
       signal: AbortSignal.timeout(30_000),
     })
-    if (!response.ok)
+    if (!response.ok) {
+      // Classify only known provider codes; never expose Google's raw message,
+      // which may include file IDs, account details or request information.
+      let reasons: string[] = []
+      try {
+        const bytes = await boundedBytes(response.body, 8192)
+        const body: unknown = JSON.parse(new TextDecoder().decode(bytes))
+        const errors = (body as { error?: { errors?: unknown } } | null)?.error?.errors
+        if (Array.isArray(errors))
+          reasons = errors.flatMap((entry: unknown) => {
+            const reason = (entry as { reason?: unknown } | null)?.reason
+            return typeof reason === "string" ? [reason] : []
+          })
+      } catch {
+        // Non-JSON and oversized provider errors retain the safe fallback.
+      }
+      if (response.status === 403 && reasons.includes("storageQuotaExceeded"))
+        throw new FileError(
+          "The connected Google account has reached its storage limit. HR must free Google storage, including trash, then retry this upload. Reconnecting Drive will not free storage.",
+          507
+        )
+      if (response.status === 401)
+        throw new FileError(
+          "Google Drive authorization is no longer valid. Ask HR to reconnect the same Google account, then retry.",
+          503
+        )
+      if (response.status === 429 || reasons.some((reason) =>
+        reason === "rateLimitExceeded" || reason === "userRateLimitExceeded"
+      ))
+        throw new FileError("Google Drive is receiving too many requests. Wait a moment, then retry.", 429)
       throw new FileError(
         "Google Drive request failed. Check the connection and available storage.",
         503
       )
+    }
     return response
   }
   async function privateFile(id: string, folderId?: string) {

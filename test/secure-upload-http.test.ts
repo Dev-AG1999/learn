@@ -431,3 +431,26 @@ test("expired or tampered signed URLs fail before storage access", async () => {
     ).status
   ).toBe(403)
 })
+
+test("Drive storage exhaustion returns actionable 507 without staging or saving payroll", async () => {
+  mocks.put.mockRejectedValueOnce(new FileError(
+    "The connected Google account has reached its storage limit. HR must free Google storage, including trash, then retry this upload.",
+    507
+  ))
+  const csv = Buffer.from(
+    "employeeId,year,month,annualCtcMinor,currency,unpaidLeaveDays,otherDeductionsMinor\nQUOTA-TEST,2026,1,1200000,INR,0,0"
+  )
+  const response = await preview(formRequest("/hr/import/preview", hrCookie, {}, {
+    name: "salary.csv", bytes: csv, field: "sheet",
+  }))
+  expect(response.status).toBe(507)
+  const result = await response.json()
+  expect(result.failures[0].message).toContain("storage limit")
+  expect(result.reviewUrl).toBeUndefined()
+  expect(await withPayroll((db) => db.get("QUOTA-TEST", 2026, 1))).toBeNull()
+  const { openStorageDatabase } = await import("../src/db/connection.ts")
+  const raw = openStorageDatabase(process.env.PAYROLL_DB!)
+  try {
+    expect(raw.prepare("SELECT count(*) AS count FROM payroll_drafts").get()).toMatchObject({ count: 0 })
+  } finally { raw.close() }
+})

@@ -183,18 +183,22 @@ export async function logoutResponse(
 
 export async function sessionResponse(request: Request): Promise<Response> {
   const credential = requestToken(request.headers)
-  const principal = credential.token
-    ? await withAuth((db) => authenticate(db, credential.token))
-    : null
-  if (!principal) return authFailure(new AuthError(401))
-  const session = await withAuth(async (db) => {
+  if (!credential.token) return authFailure(new AuthError(401))
+  // Verify identity and timing on one connection. Never return 200 with null
+  // timing when a concurrent logout/expiry invalidates the session.
+  const status = await withAuth(async (db) => {
+    const principal = await authenticate(db, credential.token)
+    if (!principal) return null
     const { verifyToken } = await import("./tokens.ts")
     const claims = await verifyToken(credential.token)
-    return claims
+    const session = claims
       ? db.sessionTiming(claims.sessionId, Math.floor(Date.now() / 1000))
       : null
+    return session ? { ...principal, session } : null
   })
-  return Response.json({ ...principal, session }, { headers: privateHeaders })
+  return status
+    ? Response.json(status, { headers: privateHeaders })
+    : authFailure(new AuthError(401))
 }
 
 async function refreshBody(

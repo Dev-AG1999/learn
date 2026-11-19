@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite"
+import { openStorageDatabase } from "../db/connection.ts"
 import { preparePayrollPath } from "../payroll-db.ts"
 import {
   DocumentError,
@@ -8,7 +8,7 @@ import {
 } from "./types.ts"
 
 export function openDocumentRepository(path: string) {
-  const db = new DatabaseSync(path)
+  const db = openStorageDatabase(path)
   db.exec(`
     PRAGMA foreign_keys = ON;
     PRAGMA busy_timeout = 5000;

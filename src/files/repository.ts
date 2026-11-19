@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite"
+import { openStorageDatabase } from "../db/connection.ts"
 import { preparePayrollPath } from "../payroll-db.ts"
 import {
   FileError,
@@ -9,7 +9,7 @@ import {
 import { seal, unseal } from "./crypto.ts"
 
 export function openFileRepository(path: string) {
-  const db = new DatabaseSync(path)
+  const db = openStorageDatabase(path)
   db.exec(`PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS secure_files (
       id TEXT PRIMARY KEY, ownerId TEXT NOT NULL, ownerName TEXT NOT NULL, name TEXT NOT NULL,

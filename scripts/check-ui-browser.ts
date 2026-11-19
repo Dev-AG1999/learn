@@ -1,6 +1,6 @@
 import { withFiles } from "../src/files/repository.ts"
 import { scannerFixture } from "./scanner-fixture.ts"
-import { DatabaseSync } from "node:sqlite"
+import { openStorageDatabase } from "../src/db/connection.ts"
 import assert from "node:assert/strict"
 import { spawn, execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
@@ -49,6 +49,8 @@ const dir = mkdtempSync(join(tmpdir(), "paydesk-ui-fixture-"))
 const screenshots =
   process.env.UI_SCREENSHOT_DIR ?? join(tmpdir(), "paydesk-ui-review")
 mkdirSync(screenshots, { recursive: true, mode: 0o700 })
+const originalEncryptionKey = process.env.DATABASE_ENCRYPTION_KEY
+process.env.DATABASE_ENCRYPTION_KEY = randomBytes(32).toString("hex")
 const originalDb = process.env.PAYROLL_DB
 process.env.PAYROLL_DB = join(dir, "payroll.sqlite")
 let server: ReturnType<typeof spawn> | undefined
@@ -428,7 +430,7 @@ try {
   await checkInlineAttachment(false)
   await browser.navigate(`${origin}/hr`)
   const expireAccess = () => {
-    const raw = new DatabaseSync(process.env.PAYROLL_DB!)
+    const raw = openStorageDatabase(process.env.PAYROLL_DB!)
     try {
       raw.exec(
         "UPDATE auth_sessions SET expires_at=0; UPDATE auth_refresh_tokens SET created_at=unixepoch()-600 WHERE consumed_at IS NULL;"
@@ -719,6 +721,8 @@ try {
   await stop(scanner)
   await stop(proxy)
   rmSync(dir, { recursive: true, force: true })
+  if (originalEncryptionKey === undefined) delete process.env.DATABASE_ENCRYPTION_KEY
+  else process.env.DATABASE_ENCRYPTION_KEY = originalEncryptionKey
   if (originalDb === undefined) delete process.env.PAYROLL_DB
   else process.env.PAYROLL_DB = originalDb
 }

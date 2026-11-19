@@ -12,6 +12,8 @@ import { withPayroll } from "../src/payroll-db.ts"
 
 // Runs against a production build using an isolated synthetic database.
 const dir = mkdtempSync(join(tmpdir(), "payroll-http-smoke-"))
+const originalEncryptionKey = process.env.DATABASE_ENCRYPTION_KEY
+process.env.DATABASE_ENCRYPTION_KEY = randomBytes(32).toString("hex")
 const originalDb = process.env.PAYROLL_DB
 process.env.PAYROLL_DB = join(dir, "payroll.sqlite")
 let server: ReturnType<typeof spawn> | undefined
@@ -84,6 +86,8 @@ const get = (path: string, cookie?: string) => fetch(`${origin}${path}`, { redir
   server?.kill("SIGTERM")
   if (server && server.exitCode === null) await new Promise<void>(resolve => server!.once("exit", () => resolve()))
   rmSync(dir, { recursive: true, force: true })
+  if (originalEncryptionKey === undefined) delete process.env.DATABASE_ENCRYPTION_KEY
+  else process.env.DATABASE_ENCRYPTION_KEY = originalEncryptionKey
   if (originalDb === undefined) delete process.env.PAYROLL_DB
   else process.env.PAYROLL_DB = originalDb
 }

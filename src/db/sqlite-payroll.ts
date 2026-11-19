@@ -12,7 +12,7 @@ import {
 } from "../import/types.ts"
 import { createHash } from "node:crypto"
 import { validateSalary } from "../salary-validation.ts"
-import { DatabaseSync } from "node:sqlite"
+import { openStorageDatabase } from "./connection.ts"
 import {
   computePayslip,
   validatePayrollInput,
@@ -204,7 +204,7 @@ type PayslipRow = {
 }
 
 export function openPayrollDatabase(path: string): PayrollRepository {
-  const db = new DatabaseSync(path)
+  const db = openStorageDatabase(path)
   db.exec(`
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS employees (

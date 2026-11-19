@@ -182,3 +182,7 @@ endpoint continues to enforce HR access, Origin, state and PKCE; its original 30
 response remains available for non-JSON callers. Tests cover the JSON contract,
 destination validation, browser error/retry, repeated clicks and consent navigation
 with a synthetic Google endpoint. No Google account is contacted by that test.
+
+### Google Drive storage quota
+
+A connected account can authorize successfully while new uploads fail with Google's `storageQuotaExceeded` error. Paydesk now reports this as HTTP 507 with a specific storage-limit message. HR must free storage in the connected Google account, including trash, and retry. Reconnecting the same account does not increase its quota. The import remains unsaved when storage fails. Provider response bodies are bounded and only known reason codes are mapped to safe user messages; raw Google messages, credentials and file identifiers are not displayed. Rate limits and expired authorization have separate retry/reconnect messages. See Google's [Drive error guide](https://developers.google.com/workspace/drive/api/guides/handle-errors#storageQuotaExceeded).

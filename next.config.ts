@@ -2,7 +2,7 @@ import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   agentRules: false,
-  serverExternalPackages: ["unpdf", "sharp"],
+  serverExternalPackages: ["unpdf", "sharp", "better-sqlite3-multiple-ciphers"],
   outputFileTracingIncludes: {
     "/hr/documents": [
       "./scripts/sanitize-upload-worker.mjs",

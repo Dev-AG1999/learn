@@ -207,7 +207,7 @@ export function SessionNotice({ userId }: { userId: string }) {
         void sessionStatus()
           .then((next) => {
             if (next) accepted(next)
-            else if (performance.now() - lastInteraction < 60000) void renew()
+            else setNotice({ kind: "warning", text: "Check your session to continue working securely." })
           })
           .catch(failed)
       }
@@ -220,7 +220,7 @@ export function SessionNotice({ userId }: { userId: string }) {
     void sessionStatus()
       .then((next) => {
         if (next) accepted(next)
-        else void renew()
+        else setNotice({ kind: "warning", text: "Check your session to continue working securely." })
       })
       .catch(failed)
     const timer = window.setInterval(tick, 10000)
