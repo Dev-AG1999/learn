@@ -1,3 +1,4 @@
+import type { UploadReview } from "../ai/review.ts"
 import { openStorageDatabase } from "../db/connection.ts"
 import { preparePayrollPath } from "../payroll-db.ts"
 import {
@@ -19,6 +20,9 @@ export function openFileRepository(path: string) {
     CREATE INDEX IF NOT EXISTS secure_files_owner_page ON secure_files(ownerId, createdAt DESC, id DESC);
     CREATE INDEX IF NOT EXISTS secure_files_page ON secure_files(createdAt DESC, id DESC);
     CREATE TABLE IF NOT EXISTS secure_file_links (context TEXT NOT NULL, contextId TEXT NOT NULL, fileId TEXT NOT NULL, PRIMARY KEY(context,contextId,fileId));
+    CREATE TABLE IF NOT EXISTS file_ai_reviews (
+      fileId TEXT PRIMARY KEY REFERENCES secure_files(id), reviewJson TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS file_upload_limits (userId TEXT NOT NULL, hour INTEGER NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(userId,hour));
     CREATE TABLE IF NOT EXISTS drive_connection (id INTEGER PRIMARY KEY CHECK(id=1), userId TEXT NOT NULL, driveUserId TEXT NOT NULL, folderId TEXT NOT NULL, secret TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS drive_oauth_states (stateHash TEXT PRIMARY KEY, userId TEXT NOT NULL, verifier TEXT NOT NULL, expiresAt INTEGER NOT NULL);
@@ -34,6 +38,18 @@ export function openFileRepository(path: string) {
   }
   return {
     access,
+    saveReview(fileId: string, review: UploadReview) {
+      db.prepare(
+        "INSERT INTO file_ai_reviews VALUES (?, ?) ON CONFLICT(fileId) DO UPDATE SET reviewJson=excluded.reviewJson"
+      ).run(fileId, JSON.stringify(review))
+    },
+    review(scope: FileScope, fileId: string): UploadReview | null {
+      access(scope, fileId)
+      const row = db
+        .prepare("SELECT reviewJson FROM file_ai_reviews WHERE fileId=?")
+        .get(fileId) as { reviewJson: string } | undefined
+      return row ? (JSON.parse(row.reviewJson) as UploadReview) : null
+    },
     list(scope: FileScope, before?: string) {
       let cursor: { time: number; id: string } | null = null
       if (before) {

@@ -25,11 +25,12 @@ export async function uploadDocument(
   principal: Principal,
   name: string,
   bytes: Uint8Array,
-  deps: DocumentDependencies
+  deps: DocumentDependencies,
+  source?: { fileId: string; ownerId: string; ownerName: string }
 ): Promise<DocumentRecord> {
   deps.repository.consume(principal, "upload")
   if (
-    !/\.pdf$/i.test(name) ||
+    !(source ? /\.(pdf|png|jpe?g)$/i : /\.pdf$/i).test(name) ||
     name.length > 180 ||
     /[\u0000-\u001f/\\]/.test(name)
   )
@@ -41,10 +42,10 @@ export async function uploadDocument(
   const document: DocumentRecord = {
     id,
     embeddingProfile: deps.language.embeddingProfile ?? "openai-v1",
-    ownerId: principal.userId,
-    ownerName: principal.username,
+    ownerId: source?.ownerId ?? principal.userId,
+    ownerName: source?.ownerName ?? principal.username,
     name,
-    objectKey: `documents/${id}.pdf`,
+    objectKey: source ? `secure-files/${source.fileId}` : `documents/${id}.pdf`,
     pages,
     status: "processing",
     createdAt: Date.now(),

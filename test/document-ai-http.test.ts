@@ -29,7 +29,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
   vi.unstubAllEnvs()
 })
-test("every old document AI endpoint is blocked even when AI_DOCUMENTS_ENABLED is true", async () => {
+test("AI endpoints require valid local encrypted configuration and old raw downloads remain closed", async () => {
   vi.stubEnv("AI_DOCUMENTS_ENABLED", "true")
   const login = await loginResponse(
     new Request("http://localhost:3000/auth/login", {
@@ -57,11 +57,10 @@ test("every old document AI endpoint is blocked even when AI_DOCUMENTS_ENABLED i
         headers: { Cookie: cookie, Origin: "http://localhost:3000" },
       })
     )
-    expect(response.status).toBe(409)
-    expect(await response.text()).toContain("deferred")
+    expect([503, 410]).toContain(response.status)
   }
 })
-test("deferred endpoints still enforce authentication", async () => {
+test("document endpoints enforce authentication", async () => {
   expect(
     (
       await downloadResponse(

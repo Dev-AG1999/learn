@@ -1,7 +1,7 @@
 import { DocumentError } from "./types.ts"
 
 export function selectedAiProvider(): "openai" | "ollama" {
-  const provider = process.env.AI_PROVIDER ?? "openai"
+  const provider = process.env.AI_PROVIDER ?? "ollama"
   if (provider !== "openai" && provider !== "ollama")
     throw new DocumentError("AI_PROVIDER must be openai or ollama.", 503)
   return provider
@@ -23,13 +23,17 @@ export function ollamaBaseUrl(): string {
     )
   return url.origin
 }
-// The upload-security milestone takes precedence over the earlier AI scaffold.
 export function documentAiConfigured(): boolean {
-  return false
+  try { requireDocumentAi(); return true } catch { return false }
 }
-export function requireDocumentAi(): never {
-  throw new DocumentError(
-    "Document AI is deferred until secure uploads are reviewed.",
-    409
-  )
+export function requireDocumentAi(): void {
+  if (process.env.AI_DOCUMENTS_ENABLED !== "true")
+    throw new DocumentError("Document AI is not enabled. Ask HR to configure the local Ollama models.", 503)
+  if (selectedAiProvider() !== "ollama")
+    throw new DocumentError("The document assistant requires the local Ollama provider.", 503)
+  if ([process.env.LANGSMITH_TRACING, process.env.LANGCHAIN_TRACING_V2, process.env.LANGCHAIN_TRACING].some((value) => value === "true"))
+    throw new DocumentError("Disable AI tracing before processing private documents.", 503)
+  if (!/^[a-f0-9]{64}$/i.test(process.env.DATABASE_ENCRYPTION_KEY ?? ""))
+    throw new DocumentError("Configure encrypted database storage before enabling document AI.", 503)
+  ollamaBaseUrl()
 }

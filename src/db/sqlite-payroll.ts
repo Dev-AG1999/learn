@@ -184,7 +184,11 @@ export type PayrollRepository = {
     limit: number,
     cursor: string | null
   ): Promise<PendingClaimPage>
-  uploadDocument(input: { documentId: string; body: string }): Promise<void>
+  uploadDocument(input: {
+    documentId: string
+    body: string
+    shareWithEmployees?: boolean
+  }): Promise<void>
   answerFromDocuments(question: string): Promise<CitedAnswer | null>
   orgTotals(year: number, month: number): Promise<OrgTotal[]>
   listEmployeeIds(limit: number, cursor: string | null): Promise<EmployeePage>
@@ -267,6 +271,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       document_id TEXT PRIMARY KEY,
       body TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS chat_policy_access(documentId TEXT PRIMARY KEY, shared INTEGER NOT NULL CHECK(shared IN (0,1)));
   `)
 
   const getPayslip = db.prepare(`
@@ -881,7 +886,17 @@ export function openPayrollDatabase(path: string): PayrollRepository {
     },
 
     async uploadDocument(input) {
-      insertDocument.run(input.documentId, input.body)
+      db.exec("BEGIN IMMEDIATE")
+      try {
+        insertDocument.run(input.documentId, input.body)
+        db.prepare(
+          "INSERT INTO chat_policy_access VALUES (?,?) ON CONFLICT(documentId) DO UPDATE SET shared=excluded.shared"
+        ).run(input.documentId, input.shareWithEmployees ? 1 : 0)
+        db.exec("COMMIT")
+      } catch (error) {
+        db.exec("ROLLBACK")
+        throw error
+      }
     },
 
     async answerFromDocuments(question) {

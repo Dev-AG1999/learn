@@ -10,6 +10,13 @@ services:
     volumes:
       - clamav_signatures:/var/lib/clamav
       - ./config/clamd.conf:/etc/clamav/clamd.conf:ro
+    # Use the configured socket; the image's localhost probe can select IPv6.
+    healthcheck:
+      test: ["CMD", "clamdscan", "--config-file=/etc/clamav/clamd.conf", "--ping=1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10m
     mem_limit: 4g
 volumes:
   clamav_signatures:

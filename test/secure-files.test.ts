@@ -218,3 +218,30 @@ test("durable upload limits are account-bound", () => {
   ).not.toThrow()
   expect(() => repository.consume(principal, 3600000)).not.toThrow()
 })
+
+test("AI review runs only after both scans and code validation; unavailable review remains visible", async () => {
+  const events: string[] = []
+  deps.scanner.scan = vi.fn(async () => { events.push("scan"); return { version: "test", scannedAt: Date.now() } })
+  deps.normalize = async (bytes) => { events.push("normalize"); return bytes }
+  deps.validate = async () => { events.push("validate") }
+  deps.review = vi.fn(async () => { events.push("review"); return { status: "unavailable" as const, summary: "Local AI is unavailable; review manually.", checks: [] } })
+  deps.store.put = vi.fn(async () => { events.push("store") })
+  const file = await secureUpload(principal, "sample.pdf", gzipSync(pdf), deps)
+  expect(events).toEqual(["scan", "normalize", "validate", "scan", "review", "store"])
+  expect(file.status).toBe("ready")
+  expect(repository.review(principal, file.id)?.status).toBe("unavailable")
+  expect(() => repository.review({ role: "employee", userId: "other" }, file.id)).toThrow("not found")
+})
+test("malware in either scan never reaches AI review or Drive", async () => {
+  for (const rejectedScan of [1, 2]) {
+    let call = 0
+    deps.scanner.scan = vi.fn(async () => {
+      if (++call === rejectedScan) throw new FileError("Malware detected.", 422)
+      return { version: "test", scannedAt: Date.now() }
+    })
+    deps.review = vi.fn(async () => ({ status: "reviewed" as const, summary: "unused", checks: [] }))
+    await expect(secureUpload(principal, "sample.pdf", gzipSync(pdf), deps)).rejects.toMatchObject({ status: 422 })
+    expect(deps.review).not.toHaveBeenCalled()
+    expect(deps.store.put).not.toHaveBeenCalled()
+  }
+})

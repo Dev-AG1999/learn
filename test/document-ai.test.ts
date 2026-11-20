@@ -75,10 +75,10 @@ test("extracts an actual generated payslip PDF with stable page references", asy
   expect(extracted.pages).toBe(1)
   expect(extracted.passages[0].page).toBe(1)
   expect(extracted.passages.map((item) => item.text).join(" ")).toContain(
-    "Other deductions 5000"
+    "Other deductions INR 50.00"
   )
   expect(extracted.passages.map((item) => item.text).join(" ")).toContain(
-    "Net 95000"
+    "Net INR 950.00"
   )
 })
 test("rejects spoofed, malformed and oversized PDFs before indexing", async () => {
@@ -276,4 +276,12 @@ test("document quota is enforced atomically before new storage writes", () => {
     })
   ).toThrow("100-document")
   expect(repository.list(employee)).toHaveLength(50)
+})
+
+test("PDF extraction accepts decompressed Node buffers through the worker protocol", async () => {
+  const { gzipSync, gunzipSync } = await import("node:zlib")
+  const bytes = gunzipSync(gzipSync(pdf))
+  const extracted = await extractPdf(bytes)
+  expect(extracted.pages).toBe(1)
+  expect(extracted.passages.length).toBeGreaterThan(0)
 })

@@ -1,3 +1,6 @@
+import { documentAiConfigured } from "../document-ai/config.ts"
+import { indexSecurePdf } from "../document-ai/runtime.ts"
+import { reviewUpload, type UploadContext } from "../ai/review.ts"
 import type { Principal } from "../auth/repository.ts"
 import { FileError, type StoredFile } from "./types.ts"
 import { boundedForm } from "../import/request.ts"
@@ -18,7 +21,10 @@ export async function storeFormFile(
   principal: Principal,
   form: FormData,
   field: string,
-  validate?: UploadDependencies["validate"]
+  validate?: UploadDependencies["validate"],
+  context: UploadContext = {
+    purpose: field === "sheet" ? "salary-sheet" : "chat",
+  }
 ): Promise<StoredFile> {
   requireUploadsEnabled()
   const file = form.get(field)
@@ -40,7 +46,7 @@ export async function storeFormFile(
           503
         )
       repository.consume(principal)
-      return secureUpload(
+      const stored = await secureUpload(
         principal,
         file.name,
         new Uint8Array(await file.arrayBuffer()),
@@ -49,8 +55,32 @@ export async function storeFormFile(
           scanner: clamAvScanner(),
           store: googleDriveStore(repository),
           validate,
+          review: (bytes, kind) => reviewUpload(bytes, kind, context),
         }
       )
+      if (
+        documentAiConfigured() &&
+        ["pdf", "png", "jpeg"].includes(stored.kind ?? "")
+      ) {
+        try {
+          await indexSecurePdf(principal, stored.id)
+          const review = repository.review(principal, stored.id)
+          if (review)
+            repository.saveReview(stored.id, {
+              ...review,
+              indexStatus: "ready",
+            })
+        } catch {
+          const review = repository.review(principal, stored.id)
+          repository.saveReview(stored.id, {
+            status: review?.status ?? "unavailable",
+            indexStatus: "unavailable",
+            summary: `${review?.summary ?? "Required upload checks completed."} Chat indexing could not complete; retry from the chatbot.`,
+            checks: review?.checks ?? [],
+          })
+        }
+      }
+      return stored
     })
   } finally {
     activeUploads--

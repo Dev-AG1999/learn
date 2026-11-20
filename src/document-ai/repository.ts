@@ -24,6 +24,11 @@ export function openDocumentRepository(path: string) {
       chunkIndex INTEGER NOT NULL, page INTEGER NOT NULL, text TEXT NOT NULL,
       PRIMARY KEY(documentId, chunkIndex)
     );
+    CREATE TABLE IF NOT EXISTS ai_vectors (
+      documentId TEXT NOT NULL REFERENCES ai_documents(id) ON DELETE CASCADE,
+      chunkIndex INTEGER NOT NULL, vectorJson TEXT NOT NULL,
+      PRIMARY KEY(documentId, chunkIndex)
+    );
     CREATE TABLE IF NOT EXISTS ai_usage (
       userId TEXT NOT NULL, action TEXT NOT NULL, hour INTEGER NOT NULL, count INTEGER NOT NULL,
       PRIMARY KEY(userId, action, hour)
@@ -57,6 +62,64 @@ export function openDocumentRepository(path: string) {
   }
   return {
     access,
+    listOwned(scope: Scope, ownerId: string): DocumentRecord[] {
+      if (scope.role !== "hr" && ownerId !== scope.userId)
+        throw new DocumentError("Document not found.", 404)
+      return db
+        .prepare(
+          "SELECT * FROM ai_documents WHERE ownerId=? AND status='ready' ORDER BY createdAt DESC, id DESC LIMIT 100"
+        )
+        .all(ownerId) as DocumentRecord[]
+    },
+    bySource(scope: Scope, objectKey: string): DocumentRecord | null {
+      return (
+        (db
+          .prepare(
+            "SELECT * FROM ai_documents WHERE objectKey=? AND (?='hr' OR ownerId=?)"
+          )
+          .get(objectKey, scope.role, scope.userId) as
+          DocumentRecord | undefined) ?? null
+      )
+    },
+    resetFailed(scope: Scope, id: string) {
+      const document = access(scope, id)
+      if (document.status !== "failed")
+        throw new DocumentError("This PDF is already being indexed.", 409)
+      db.prepare("DELETE FROM ai_documents WHERE id=? AND status='failed'").run(
+        id
+      )
+    },
+    saveVectors(document: DocumentRecord, vectors: number[][]) {
+      db.exec("BEGIN IMMEDIATE")
+      try {
+        const insert = db.prepare("INSERT INTO ai_vectors VALUES (?, ?, ?)")
+        vectors.forEach((vector, index) =>
+          insert.run(document.id, index, JSON.stringify(vector))
+        )
+        db.exec("COMMIT")
+      } catch (error) {
+        db.exec("ROLLBACK")
+        throw error
+      }
+    },
+    vectors(document: DocumentRecord): { index: number; vector: number[] }[] {
+      return (
+        db
+          .prepare(
+            "SELECT v.chunkIndex, v.vectorJson FROM ai_vectors v JOIN ai_documents d ON d.id=v.documentId WHERE d.id=? AND d.ownerId=? ORDER BY v.chunkIndex"
+          )
+          .all(document.id, document.ownerId) as {
+          chunkIndex: number
+          vectorJson: string
+        }[]
+      ).map((row) => ({
+        index: row.chunkIndex,
+        vector: JSON.parse(row.vectorJson) as number[],
+      }))
+    },
+    removeVectors(document: DocumentRecord) {
+      db.prepare("DELETE FROM ai_vectors WHERE documentId=?").run(document.id)
+    },
     list(scope: Scope): DocumentRecord[] {
       return db
         .prepare(

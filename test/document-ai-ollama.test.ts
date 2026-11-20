@@ -251,3 +251,10 @@ test("existing document databases migrate to the original OpenAI profile without
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test("local document AI is enabled only with encrypted storage and tracing disabled", () => {
+  vi.stubEnv("DATABASE_ENCRYPTION_KEY", "ce".repeat(32))
+  expect(documentAiConfigured()).toBe(true)
+  vi.stubEnv("LANGSMITH_TRACING", "true")
+  expect(documentAiConfigured()).toBe(false)
+})

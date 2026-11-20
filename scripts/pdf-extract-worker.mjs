@@ -4,7 +4,7 @@ import { getDocumentProxy } from "unpdf"
 
 let pdf
 try {
-  pdf = await getDocumentProxy(new Uint8Array(workerData), {
+  pdf = await getDocumentProxy(new Uint8Array(workerData.bytes), {
     isEvalSupported: false,
     useSystemFonts: false,
     stopAtErrors: true,

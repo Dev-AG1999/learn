@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   agentRules: false,
   serverExternalPackages: ["unpdf", "sharp", "better-sqlite3-multiple-ciphers"],
   outputFileTracingIncludes: {
+    "/api/chat/attachments": ["./scripts/sanitize-upload-worker.mjs", "./scripts/pdf-extract-worker.mjs", "./node_modules/unpdf/**/*", "./node_modules/sharp/**/*", "./node_modules/@img/**/*"],
+    "/api/chat": ["./scripts/pdf-extract-worker.mjs", "./node_modules/unpdf/**/*"],
+    "/api/documents": ["./scripts/pdf-extract-worker.mjs", "./scripts/sanitize-upload-worker.mjs", "./node_modules/unpdf/**/*", "./node_modules/sharp/**/*", "./node_modules/@img/**/*"],
     "/hr/documents": [
       "./scripts/sanitize-upload-worker.mjs",
       "./node_modules/unpdf/**/*",

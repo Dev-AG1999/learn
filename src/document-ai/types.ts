@@ -25,11 +25,10 @@ export type Answer = {
 }
 export type Scope = Pick<Principal, "userId" | "role">
 export class DocumentError extends Error {
-  constructor(
-    message: string,
-    readonly status = 400
-  ) {
+  readonly status: number
+  constructor(message: string, status = 400) {
     super(message)
+    this.status = status
   }
 }
 export interface ObjectStore {

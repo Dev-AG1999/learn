@@ -1,5 +1,5 @@
 # Optional local vector service. Supply QDRANT_API_KEY in the shell or --env-file.
-# S3 and OpenAI are configured separately in the application's .env.local.
+# Future external vector option only; the current local assistant uses encrypted SQLite.
 services:
   qdrant:
     image: qdrant/qdrant:v1.17.0

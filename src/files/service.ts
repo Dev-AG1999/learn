@@ -68,6 +68,10 @@ export type UploadDependencies = {
   scanner: FileScanner
   store: FileStore
   normalize?: typeof normalizeUpload
+  review?: (
+    bytes: Uint8Array,
+    kind: FileKind
+  ) => Promise<import("../ai/review.ts").UploadReview>
   validate?: (bytes: Uint8Array, kind: FileKind) => Promise<void>
 }
 export async function secureUpload(
@@ -116,7 +120,6 @@ export async function secureUpload(
         "File content does not match its PDF/JPEG/PNG extension."
       )
     await deps.scanner.scan(raw)
-    await deps.validate?.(raw, kind)
     const normalized =
       kind === "csv" || kind === "xlsx"
         ? raw
@@ -127,10 +130,13 @@ export async function secureUpload(
       !matchesSignature(normalized, kind)
     )
       throw new FileError("Processed file is invalid.")
+    await deps.validate?.(normalized, kind)
     const stored = await compress(normalized, { level: 9 })
     if (stored.length > MAX_COMPRESSED_BYTES)
       throw new FileError("Processed file exceeds the storage limit.", 413)
     const report = await deps.scanner.scan(stored)
+    if (deps.review)
+      deps.repository.saveReview(id, await deps.review(normalized, kind))
     // No Drive API file write happens until both scans and validation succeed.
     driveId = await deps.store.allocate()
     deps.repository.setDriveId(id, driveId)

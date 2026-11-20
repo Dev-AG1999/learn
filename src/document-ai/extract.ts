@@ -20,7 +20,7 @@ function extractPages(bytes: Uint8Array): Promise<string[]> {
     const worker = new Worker(
       resolve(process.cwd(), "scripts/pdf-extract-worker.mjs"),
       {
-        workerData: bytes,
+        workerData: { bytes: new Uint8Array(bytes) },
         resourceLimits: {
           maxOldGenerationSizeMb: 128,
           maxYoungGenerationSizeMb: 32,

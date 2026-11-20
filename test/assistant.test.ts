@@ -23,9 +23,9 @@ const slip: StoredPayslip = {
 
 test("the employee explanation shows the stored figures", () => {
   const text = explainPayslip(slip)
-  assert.equal(text.includes("120200"), true)
-  assert.equal(text.includes("120000"), true)
-  assert.equal(text.includes("200"), true)
+  assert.equal(text.includes("Net USD 1202.00"), true)
+  assert.equal(text.includes("Monthly gross USD 1200.00"), true)
+  assert.equal(text.includes("Approved reimbursements USD 2.00"), true)
   assert.equal(text.includes("USD"), true)
 })
 
