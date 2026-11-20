@@ -1,6 +1,6 @@
 # Paydesk — current architecture decisions
 
-Current system review, 21 November 2026. This file describes the implemented architecture, not the original milestone proposals. The one-page [ARCHITECTURE.md](ARCHITECTURE.md) and [architecture PDF](docs/architecture-one-page.pdf) summarize the entire system. [Historical architecture proposals](docs/ARCHITECTURE_HISTORY.md) and [implementation history](docs/IMPLEMENTATION_HISTORY.md) preserve the step-by-step evolution separately.
+Current system review, 21 November 2026. This file describes implemented architecture decisions and their tradeoffs. The one-page [ARCHITECTURE.md](ARCHITECTURE.md) and [architecture PDF](docs/architecture-one-page.pdf) summarize the entire system.
 
 ## Implemented boundaries and decisions
 

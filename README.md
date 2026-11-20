@@ -9,7 +9,7 @@ An HR salary-management assessment application built with Next.js, React, TypeSc
 - [Architecture decisions and limits](ARCHITECTURE_REVIEW.md)
 - [Deployment and environment setup](docs/DEPLOYMENT.md)
 - [Employee login/account provisioning](docs/EMPLOYEE_ACCESS.md)
-- [Acceptance cases](docs/CURRENT_TEST_CASES.md) and [release verification](docs/RELEASE_VERIFICATION.md)
+- [Acceptance cases](docs/CURRENT_TEST_CASES.md) and [test results](docs/TEST_RESULTS.md)
 - [Security](SECURITY.md), [database encryption/migration](DATABASE_ENCRYPTION.md), [secure uploads](SECURE_UPLOADS.md), [local AI](DOCUMENT_AI.md), [salary import](IMPORT_GUIDE.md)
 
 ## Local setup
@@ -36,7 +36,7 @@ npm run test:uploads:scanner
 npm run ai:check
 ```
 
-Browser checks require Chrome and native OCR. Real scanner/model checks require those local services. Automated tests use synthetic isolated data; see the release report for actual executions and limitations. Passing tests does not prove the application cannot fail or establish production load capacity.
+Browser checks require Chrome and native OCR. Real scanner/model checks require those local services. Automated tests use synthetic isolated data; see the test-results document for recorded executions and limitations. Passing tests does not prove the application cannot fail or establish production load capacity.
 
 ## Deployment boundary
 

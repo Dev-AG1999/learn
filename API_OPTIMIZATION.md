@@ -10,7 +10,7 @@ Identical in-flight reads share a request; failures are never cached. Sequence c
 
 Salary writes, uploads, auth, permissions and signed links are not response-cached. Uploads and downloads use immediate pending guards rather than throttling away intentional subsequent operations. JavaScript-managed upload forms perform their own session verification, avoiding the redundant capture/replay check. Next.js server actions/native forms remain under the existing session guard and do not pass through `apiFetch`.
 
-This is a focused read-cache implementation, not an offline database or a permanent API response store. AI remains deferred.
+This is a focused read-cache implementation, not an offline database or a permanent API response store. AI and upload processing remain outside this directory read cache.
 
 ## Validation
 

@@ -1,6 +1,6 @@
 # Paydesk — current requirements
 
-Current implementation baseline, 21 November 2026. Consolidates the repository's architect rules and subsequent approved product decisions. Historical milestone descriptions are retained in [implementation history](docs/IMPLEMENTATION_HISTORY.md); they are not the current contract. No external assessment brief is present in this repository.
+Current implementation baseline, 21 November 2026. Defines the implemented product behavior, validation rules, security boundaries and deployment limitations.
 
 See [system architecture](ARCHITECTURE.md), [architecture decisions](ARCHITECTURE_REVIEW.md), [one-page diagram](docs/architecture-one-page.pdf) and [current acceptance test cases](docs/CURRENT_TEST_CASES.md).
 
