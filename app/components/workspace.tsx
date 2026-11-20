@@ -1,3 +1,5 @@
+import { Chatbot } from "./chatbot.tsx"
+import { documentAiConfigured } from "../../src/document-ai/config.ts"
 import { SessionNotice } from "./session-notice.tsx"
 import type { ReactNode } from "react"
 import type { Principal } from "../../src/auth/repository.ts"
@@ -169,6 +171,13 @@ export function Workspace({
         </header>
         <main id="main-content" className="page-content">
           <SessionNotice userId={principal.userId} />
+          <Chatbot
+            userId={principal.userId}
+            role={principal.role}
+            employeeId={principal.employeeId}
+            period={period}
+            enabled={documentAiConfigured()}
+          />
           {children}
         </main>
         <footer className="workspace-footer">

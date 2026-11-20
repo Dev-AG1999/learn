@@ -1,3 +1,4 @@
+import { reviewUpload } from "../../../../src/ai/review.ts"
 import {
   storeFormFile,
   discardFile,
@@ -47,10 +48,26 @@ export async function POST(request: Request) {
         422
       )
     let parsed: Awaited<ReturnType<typeof parseSalaryFile>> | undefined
-    stored = await storeFormFile(principal, form, "sheet", async (bytes) => {
-      parsed = await parseSalaryFile(file.name, bytes)
-      if (!parsed.ok) throw new SheetValidationError(parsed.failures)
-    })
+    stored = await storeFormFile(
+      principal,
+      form,
+      "sheet",
+      async (bytes) => {
+        parsed = await parseSalaryFile(file.name, bytes)
+        if (!parsed.ok) throw new SheetValidationError(parsed.failures)
+      },
+      {
+        purpose: "salary-sheet",
+        structuredText: () =>
+          JSON.stringify({
+            validation:
+              "Required columns and every row passed deterministic validation.",
+            rowCount: parsed?.ok ? parsed.rows.length : 0,
+            sampleOnly: true,
+            sample: parsed?.ok ? parsed.rows.slice(0, 5) : [],
+          }),
+      }
+    )
     if (!parsed || !parsed.ok)
       throw new FileError("Sheet validation did not complete.", 422)
     const rows = parsed.rows
@@ -68,6 +85,15 @@ export async function POST(request: Request) {
         {
           failures: staged.failures.slice(0, 100),
           totalErrors: staged.failures.length,
+          aiReview: await reviewUpload(new Uint8Array(), "csv", {
+            purpose: "salary-sheet",
+            validationState: "failed",
+            structuredText: () =>
+              JSON.stringify({
+                validation: "Failed. No salary data saved.",
+                errors: staged.failures.slice(0, 10),
+              }),
+          }),
         },
         { status: 422, headers }
       )
@@ -87,6 +113,15 @@ export async function POST(request: Request) {
         {
           failures: error.failures.slice(0, 100),
           totalErrors: error.failures.length,
+          aiReview: await reviewUpload(new Uint8Array(), "csv", {
+            purpose: "salary-sheet",
+            validationState: "failed",
+            structuredText: () =>
+              JSON.stringify({
+                validation: "Failed. No salary data saved.",
+                errors: error.failures.slice(0, 10),
+              }),
+          }),
         },
         { status: 422, headers }
       )

@@ -1,3 +1,4 @@
+import { policyVisibility } from "../../../src/ai/context.ts"
 import { requireRequest, authFailure } from "../../../src/auth/http.ts"
 import { hrAccess } from "../../../src/access/roles.ts"
 import { withPayroll } from "../../../src/payroll-db.ts"
@@ -42,14 +43,25 @@ export async function POST(request: Request) {
       throw new FileError(
         "Document ID and policy text or an attachment are required."
       )
+    if (form.get("shareWithEmployees") === "yes" && !body)
+      throw new FileError(
+        "Add approved policy text before sharing it with employees."
+      )
     if (hasAttachment(form))
-      stored = await storeFormFile(principal, form, "attachment")
+      stored = await storeFormFile(principal, form, "attachment", undefined, {
+        purpose: "policy",
+        expected: {
+          documentId,
+          policyTextProvided: !!body,
+          policyTextExcerpt: body.slice(0, 1000),
+        },
+      })
     if (stored)
       await withFiles((db) => db.link("document", documentId, stored!.id))
+    policyVisibility()
     if (body)
-      await withPayroll((db) =>
-        hrAccess(db).uploadDocument({ documentId, body })
-      )
+      await withPayroll((db) => hrAccess(db).uploadDocument({ documentId, body, shareWithEmployees: form.get("shareWithEmployees") === "yes" }))
+    else policyVisibility(documentId, false)
     back.searchParams.set(
       "notice",
       body ? "document-saved" : "attachment-saved"

@@ -1,3 +1,4 @@
+import { formatMoney } from "../../../../src/presentation.ts"
 import { requireRequest, authFailure } from "../../../../src/auth/http.ts"
 import { employeeAccess } from "../../../../src/access/roles.ts"
 import { withPayroll } from "../../../../src/payroll-db.ts"
@@ -49,14 +50,22 @@ export async function POST(
       throw new FileError(
         "Confirm the claim and provide a valid amount and receipt reference."
       )
-    if (
-      !(await withPayroll((db) =>
-        employeeAccess(db, employeeId).get(period.year, period.month)
-      ))
+    const savedPayslip = await withPayroll((db) =>
+      employeeAccess(db, employeeId).get(period.year, period.month)
     )
-      throw new FileError("No payslip for this period.")
+    if (!savedPayslip) throw new FileError("No payslip for this period.")
     if (hasAttachment(form))
-      stored = await storeFormFile(principal, form, "attachment")
+      stored = await storeFormFile(principal, form, "attachment", undefined, {
+        purpose: "receipt",
+        expected: {
+          employeeId,
+          year: period.year,
+          month: period.month,
+          claimedAmountMinor: amountMinor,
+          formattedClaimAmount: formatMoney(amountMinor, savedPayslip.currency),
+          currency: savedPayslip.currency,
+        },
+      })
     const claimId = crypto.randomUUID()
     if (stored) await withFiles((db) => db.link("claim", claimId, stored!.id))
     const result = await withPayroll((db) =>

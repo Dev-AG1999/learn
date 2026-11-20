@@ -264,5 +264,6 @@ test("existing HR and employee forms include optional attachments without adding
   expect(html).toContain('name="attachment"')
   expect(html).not.toContain('href="/hr/files"')
   expect(html).not.toContain('href="/hr/assistant"')
+  expect(html).toContain("Ask Paydesk")
   expect(html).toContain("Connect Google Drive")
 })

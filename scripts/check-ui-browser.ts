@@ -1,3 +1,4 @@
+import { ollamaFixture } from "./ollama-fixture.ts"
 import { withFiles } from "../src/files/repository.ts"
 import { scannerFixture } from "./scanner-fixture.ts"
 import { openStorageDatabase } from "../src/db/connection.ts"
@@ -56,6 +57,7 @@ process.env.PAYROLL_DB = join(dir, "payroll.sqlite")
 let server: ReturnType<typeof spawn> | undefined
 let proxy: ReturnType<typeof createHttpsServer> | undefined
 let scanner: ReturnType<typeof scannerFixture> | undefined
+let localAi: ReturnType<typeof ollamaFixture> | undefined
 let browser: Awaited<ReturnType<typeof openTestBrowser>> | undefined
 try {
   const portReservation = createHttpServer()
@@ -164,6 +166,8 @@ try {
   )
   scanner = scannerFixture()
   const scannerPort = await listen(scanner)
+  localAi = ollamaFixture()
+  const aiPort = await listen(localAi)
   server = spawn(
     process.execPath,
     [
@@ -188,7 +192,10 @@ try {
         DRIVE_TOKEN_SECRET: tokenKey,
         CLAMAV_HOST: "127.0.0.1",
         CLAMAV_PORT: String(scannerPort),
-        AI_DOCUMENTS_ENABLED: "false",
+        AI_DOCUMENTS_ENABLED: "true",
+        AI_PROVIDER: "ollama",
+        OLLAMA_BASE_URL: `http://127.0.0.1:${aiPort}`,
+        OLLAMA_CHAT_MODEL: "qwen3:4b",
         LANGSMITH_TRACING: "false",
         LANGCHAIN_TRACING_V2: "false",
         LANGCHAIN_TRACING: "false",
@@ -343,7 +350,7 @@ try {
     )
     assert.equal(
       await browser!.evaluate(
-        '!!document.querySelector(\'a[href="/hr/files"],a[href*="/assistant"]\')'
+        "!!document.querySelector('a[href=\"/hr/files\"]')"
       ),
       false
     )
@@ -426,8 +433,94 @@ try {
     await browser!.send("Fetch.disable")
   }
 
+  const checkChat = async (path: string) => {
+    await browser!.navigate(`${origin}${path}`)
+    assert.equal(
+      await browser!.evaluate(
+        `!!document.querySelector('a[href*="/assistant"]')`
+      ),
+      false
+    )
+    await browser!.evaluate("document.querySelector('.chat-toggle').click()")
+    await browser!.waitFor(
+      `!!document.querySelector('#workspace-chat select[aria-label="Saved chat attachment"] option[value]:not([value=""])')`
+    )
+    await browser!.evaluate(`(() => {
+      const select = document.querySelector('select[aria-label="Saved chat attachment"]');
+      select.value = select.options[1].value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      const question = document.querySelector('#chat-question');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(question, 'Explain the deductions in this attachment');
+      question.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`)
+    await browser!.evaluate(
+      "document.querySelector('#chat-question').form.requestSubmit()"
+    )
+    await browser!.waitFor(
+      "!!document.querySelector('.chat-message-assistant details')"
+    )
+    if (!path.startsWith("/hr")) {
+      const sharp = (await import("sharp")).default
+      const imagePath = join(dir, "chat-receipt.png")
+      const svg = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360"><rect width="100%" height="100%" fill="white"/><g font-family="Arial" font-size="48"><text x="40" y="80">ACME TRAVEL RECEIPT</text><text x="40" y="160">Date 2026-11-20</text><text x="40" y="240">Amount INR 100.00</text></g></svg>'
+      )
+      writeFileSync(imagePath, await sharp(svg).png().toBuffer())
+      const root = await browser!.send<{ root: { nodeId: number } }>(
+        "DOM.getDocument"
+      )
+      const input = await browser!.send<{ nodeId: number }>(
+        "DOM.querySelector",
+        {
+          nodeId: root.root.nodeId,
+          selector: '[aria-label="Chat file attachment"]',
+        }
+      )
+      await browser!.send("DOM.setFileInputFiles", {
+        nodeId: input.nodeId,
+        files: [imagePath],
+      })
+      await browser!.evaluate(`(() => {
+        const question = document.querySelector('#chat-question');
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(question, 'Read this receipt attachment');
+        question.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`)
+      await browser!.evaluate(
+        "document.querySelector('#chat-question').form.requestSubmit()"
+      )
+      await browser!.waitFor(
+        "document.querySelectorAll('.chat-message-assistant').length === 2"
+      )
+      const raw = openStorageDatabase(process.env.PAYROLL_DB!)
+      try {
+        const row = raw
+          .prepare(
+            "SELECT text FROM ai_passages p JOIN ai_documents d ON d.id=p.documentId WHERE d.name='chat-receipt.png' LIMIT 1"
+          )
+          .get() as { text: string }
+        assert.ok(
+          row.text.includes("100.00"),
+          "OCR must preserve the synthetic receipt amount"
+        )
+      } finally {
+        raw.close()
+      }
+    }
+    await capture(
+      path.startsWith("/hr") ? "hr-chatbot" : "employee-chatbot",
+      1440
+    )
+    await capture(
+      path.startsWith("/hr") ? "hr-chatbot-mobile" : "employee-chatbot-mobile",
+      390
+    )
+    await browser!.evaluate(
+      `document.querySelector('[aria-label="Close chat"]').click()`
+    )
+  }
   await capture("hr-empty", 1440)
   await checkInlineAttachment(false)
+  await checkChat("/hr?year=2026&month=1")
   await browser.navigate(`${origin}/hr`)
   const expireAccess = () => {
     const raw = openStorageDatabase(process.env.PAYROLL_DB!)
@@ -532,13 +625,21 @@ try {
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }
   })()`)
-  await browser.waitFor("location.search.includes('q=test-b') && document.querySelector('tbody').innerText.includes('test-b')")
+  await browser.waitFor(
+    "location.search.includes('q=test-b') && document.querySelector('tbody').innerText.includes('test-b')"
+  )
   assert.equal(await browser.evaluate("window.__directoryRequests"), 1)
-  await browser.evaluate("document.querySelector('.employee-directory-filters').requestSubmit()")
+  await browser.evaluate(
+    "document.querySelector('.employee-directory-filters').requestSubmit()"
+  )
   await delay(650)
   assert.equal(await browser.evaluate("window.__directoryRequests"), 1)
-  await browser.evaluate("document.querySelector('.employee-directory-filters button[type=button]').click()")
-  await browser.waitFor("window.__directoryRequests === 2 && !document.querySelector('[aria-busy=true]')")
+  await browser.evaluate(
+    "document.querySelector('.employee-directory-filters button[type=button]').click()"
+  )
+  await browser.waitFor(
+    "window.__directoryRequests === 2 && !document.querySelector('[aria-busy=true]')"
+  )
   await capture("employee-directory-desktop", 1440)
   await capture("employee-directory-mobile", 390)
   await browser.navigate(
@@ -676,6 +777,7 @@ try {
     false
   )
   await checkInlineAttachment(true)
+  await checkChat("/employee/test-a?year=2026&month=1")
   await browser.navigate(`${origin}/employee/test-a?year=2026&month=1`)
   await capture("employee-desktop", 1440)
   await capture("employee-mobile", 390)
@@ -697,7 +799,7 @@ try {
     "Browser hydration must succeed even when browser and server currency metadata differ."
   )
   console.log(
-    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, manual employee creation, CSV/Excel upload and confirmed import, silent session recovery and cross-tab refresh, inline compressed attachments, virus protocol checks and signed URLs, Google consent navigation and retry, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
+    `UI browser checks passed: role landing, named months, empty states, salary save, claim approval, manual employee creation, CSV/Excel upload and confirmed import, silent session recovery and cross-tab refresh, inline compressed attachments, virus protocol checks and signed URLs, Google consent navigation and retry, HR/employee workspace chat, secure image upload with native OCR, automatic upload review and cited answers with a synthetic local model, desktop/tablet/mobile layouts. Screenshots: ${screenshots}`
   )
 } catch (error) {
   if (browser) {
@@ -718,10 +820,12 @@ try {
     server.kill("SIGTERM")
     await new Promise<void>((resolve) => server!.once("exit", () => resolve()))
   }
+  await stop(localAi)
   await stop(scanner)
   await stop(proxy)
   rmSync(dir, { recursive: true, force: true })
-  if (originalEncryptionKey === undefined) delete process.env.DATABASE_ENCRYPTION_KEY
+  if (originalEncryptionKey === undefined)
+    delete process.env.DATABASE_ENCRYPTION_KEY
   else process.env.DATABASE_ENCRYPTION_KEY = originalEncryptionKey
   if (originalDb === undefined) delete process.env.PAYROLL_DB
   else process.env.PAYROLL_DB = originalDb

@@ -1,4 +1,5 @@
 "use client"
+import type { UploadReview } from "../../../src/ai/review.ts"
 import { apiFetch } from "../../../src/client/api.ts"
 
 import { compressFormFiles } from "../../../src/files/browser.ts"
@@ -13,6 +14,7 @@ export function UploadForm() {
   const [pending, setPending] = useState(false)
   const [failures, setFailures] = useState<RowFailure[]>([])
   const [total, setTotal] = useState(0)
+  const [aiReview, setAiReview] = useState<UploadReview | null>(null)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (inFlight.current) return
@@ -30,6 +32,7 @@ export function UploadForm() {
     }
     inFlight.current = true
     setPending(true)
+    setAiReview(null)
     setFailures([])
     setTotal(0)
     try {
@@ -44,10 +47,12 @@ export function UploadForm() {
           "Your HR session is unavailable. Sign in again before uploading."
         )
       const result = (await response.json()) as {
+        aiReview?: UploadReview
         reviewUrl?: string
         failures?: RowFailure[]
         totalErrors?: number
       }
+      setAiReview(result.aiReview ?? null)
       if (!response.ok) {
         setFailures(
           result.failures ?? [
@@ -135,6 +140,7 @@ export function UploadForm() {
           </p>
         )}
       </div>
+      {aiReview && <div className="notice notice-info" role="status"><div><strong>AI review · {aiReview.status.replaceAll("-", " ")}</strong><p>{aiReview.summary}</p>{aiReview.checks.map((check, index) => <p key={index}>{check.field}: {check.detail}</p>)}</div></div>}
       {failures.length > 0 && (
         <div role="alert" className="notice notice-error entry-errors">
           <div>

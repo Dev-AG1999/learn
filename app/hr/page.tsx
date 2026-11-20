@@ -406,6 +406,7 @@ export default async function HrPage({
               Attachments are compressed and scanned before private Google Drive
               storage. Up to 8 MB; plain PDF, JPEG or PNG.
             </p>
+            <label className="checkbox-label"><input type="checkbox" name="shareWithEmployees" value="yes" />Allow employees to ask the chatbot about this policy text</label>
             <p className="field-help">
               Saving an existing document ID replaces its policy text.
             </p>

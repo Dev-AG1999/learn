@@ -7,20 +7,26 @@ export async function loadAttachmentLinks(
   context: "claim" | "document" | "import",
   contextId?: string
 ) {
-  const files = await withFiles((db) =>
-    db.linked(principal, context, contextId)
+  return withFiles((db) =>
+    db.linked(principal, context, contextId).map((file) => ({
+      review: db.review(principal, file.id),
+      id: file.id,
+      name: file.name,
+      url: signedFileUrl(file.id, principal.userId),
+      userId: principal.userId,
+    }))
   )
-  return files.map((file) => ({
-    id: file.id,
-    name: file.name,
-    url: signedFileUrl(file.id, principal.userId),
-    userId: principal.userId,
-  }))
 }
 export function AttachmentLinks({
   files,
 }: {
-  files: readonly { id: string; name: string; url: string; userId: string }[]
+  files: readonly {
+    id: string
+    name: string
+    url: string
+    userId: string
+    review?: import("../../src/ai/review.ts").UploadReview | null
+  }[]
 }) {
   if (!files.length) return null
   return (
@@ -37,6 +43,19 @@ export function AttachmentLinks({
             {" "}
             · scans passed · link expires in 5 minutes
           </span>
+          {file.review && (
+            <details className="field-help">
+              <summary>
+                AI review · {file.review.status.replaceAll("-", " ")}
+              </summary>
+              <p>{file.review.summary}</p>
+              {file.review.checks.map((check, index) => (
+                <p key={index}>
+                  <strong>{check.field}:</strong> {check.detail}
+                </p>
+              ))}
+            </details>
+          )}
         </li>
       ))}
     </ul>
