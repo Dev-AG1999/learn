@@ -4,6 +4,8 @@ An HR salary-management assessment application built with Next.js, React, TypeSc
 
 ## Project documentation
 
+Start with the [assessment artifact index](ARTIFACTS.md), which maps requirements, design/AI-use notes, diagrams, tradeoffs and verification evidence to the assessment brief.
+
 - [Current requirements](REQUIREMENTS.md)
 - [One-page system architecture](ARCHITECTURE.md) and [PDF](docs/architecture-one-page.pdf)
 - [Architecture decisions and limits](ARCHITECTURE_REVIEW.md)
