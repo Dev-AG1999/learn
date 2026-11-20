@@ -8,3 +8,6 @@ data/
 
 .env*
 !.env.example
+
+# Personal learning notes; keep submission documentation in docs/ tracked.
+/docs/local-learning/

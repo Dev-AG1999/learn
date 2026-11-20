@@ -1,281 +1,66 @@
-# Requirements
+# Paydesk — current requirements
 
-Source: `.cursor/rules/architect.mdc`. No assessment brief is in this repository. A decision that is not in that file or this page stops with **insufficient context**.
+Current implementation baseline, 21 November 2026. Consolidates the repository's architect rules and subsequent approved product decisions. Historical milestone descriptions are retained in [implementation history](docs/IMPLEMENTATION_HISTORY.md); they are not the current contract. No external assessment brief is present in this repository.
 
-## Product
+See [system architecture](ARCHITECTURE.md), [architecture decisions](ARCHITECTURE_REVIEW.md), [one-page diagram](docs/architecture-one-page.pdf) and [current acceptance test cases](docs/CURRENT_TEST_CASES.md).
 
-One HR role and one employee role. One Next.js TypeScript app. One UI, two areas.
+## Product and access
 
-HR edits payroll inputs, imports sheets, and uploads documents. An employee sees and downloads only their own payslips, and uploads a receipt as a `pending` claim.
+One Next.js/React/TypeScript application has HR and employee workspaces. HR creates employees, edits monthly salary inputs, imports sheets, approves pending claims, views currency-grouped totals and manages policy text/attachments. Employees view/download only their own saved payslips and submit pending reimbursement claims. Both roles use the same role-scoped chatbot.
 
-Out of scope until a trigger in the architect file says otherwise: a second language, a second UI, a second database engine, sharding, Redis, a rate-limit service, and a micro frontend. Postgres replaces SQLite only when more than one app process writes.
+Employee records and login accounts are separate. A trusted administrator provisions/resets/disables accounts; employee accounts link to existing employee IDs. There is no public signup, universal password or automatic account creation from imports. See [employee access](docs/EMPLOYEE_ACCESS.md).
 
-## Money
+## Payroll correctness and editing
 
-Integer minor units and an ISO currency. The payslip function is the only code that computes pay. A screen or the assistant reads the stored monthly snapshot. A later CTC change does not rewrite that snapshot.
+- Store money as safe integer minor units plus supported ISO currency. Manual employee entry converts decimal currency units exactly; the salary editor and sheet schema use minor units.
+- The tested domain function computes monthly gross = annual CTC / 12; daily rate = monthly gross / calendar days; unpaid deduction = unpaid days × daily rate; net = gross − unpaid deduction − other deductions + approved reimbursements. Each division rounds half away from zero before the next step. Paid leave does not reduce pay; negative net is permitted by the formula.
+- Validate employee ID, year 1900–9999, month 1–12, required monetary inputs, calendar/leave bounds, currency and claim fields. Currency changes with existing claims are restricted. Explicit confirmation is required for payroll writes and claim approval.
+- Persist monthly inputs, payslip snapshot, leave and claims transactionally. Salary editing preserves existing claims; stale versions reject overwrite. A later CTC/month change must not rewrite an earlier snapshot.
+- Pending claims do not increase pay; HR approval recalculates the affected month from its saved inputs. Legacy months missing original monthly inputs have a documented fallback to current employee CTC; HR must verify these records.
+- Other deductions record an amount, not a structured reason. No invented tax, PF, ESI or rejection-reason calculation is provided.
 
-- Monthly gross = annual CTC / 12
-- Unpaid deduction = unpaid leave days × (monthly gross / calendar days)
-- Paid leave does not reduce pay
-- Net = monthly gross − unpaid deduction − other deductions + approved reimbursements
-- Other deductions are an amount HR enters
+## Employee creation, search and imports
 
-Each division rounds half away from zero to the nearest minor unit before the next step: monthly gross, then the daily rate, then the unpaid deduction. A tie at `.5` rounds away from zero, including a negative value. Net uses those rounded terms.
+HR can manually stage a new employee's first monthly salary or upload CSV/single-sheet XLSX, review it and explicitly confirm. The sheet has exactly seven columns: `employeeId,year,month,annualCtcMinor,currency,unpaidLeaveDays,otherDeductionsMinor`; one payroll month/file, at most 10,000 rows and 2 MiB. Code validates every row, duplicate IDs, headers, safe numbers, currency, leave and period; unsafe workbook structures/formulas/links are rejected. See [import guide](IMPORT_GUIDE.md).
 
-A claim changes net pay only after HR approval, and only through that function. Tax, PF, and ESI are not part of pay.
+Drafts are owner-bound, expire after 15 minutes and use 25-row review pages with bounded retention. Confirmation checks current versions and commits the whole batch atomically. Replaying a successful confirmation is idempotent; failures must not partially commit payroll. Import never creates authentication accounts.
 
-On save and on sheet import, validate required fields, unpaid days ≤ calendar days, currency, claim amount, and receipt. Show failures to HR and commit only after confirmation. One employee’s payslip, leave days, and claims commit together. No salary amounts in logs.
+The HR-only employee directory uses case-sensitive employee-ID prefix search, current-CTC currency filtering and indexed 25-row keyset pagination. Employees remain listed without a payslip in the selected month. Current CTC and historical snapshot currencies are distinguished. Org totals are grouped by currency, never summed across currencies.
 
-## Data
+## Authentication and sensitive data
 
-SQLite on a persistent disk, behind a repository port. One application instance, through one million employee rows plus monthly payslips, with indexes and keyset pagination. Org totals group by currency. The client never loads the full table. If a monthly table is measured as slow after indexes, partition it by month in the same engine.
+Access JWTs are HS256-signed, contain identity/session references rather than salary data, and expire after 10 minutes. Server-side sessions remain revocable. Rotating opaque refresh credentials enforce a 30-minute idle and 8-hour absolute limit; consumed-token replay revokes the family. Logout, disable and password reset revoke appropriate sessions. Status reads alone do not keep a session active. Browser renewal coordinates tabs and preserves unsaved form/review navigation when recoverable.
 
-## AI
+Passwords use salted scrypt; stored session/refresh identifiers are hashed. Production cookies are HttpOnly, SameSite and Secure; mutation Origin checks and server-side role/employee ownership checks apply independently of navigation. Login attempts and expensive work are bounded. No salary/document contents or credentials belong in logs.
 
-The employee assistant may only paraphrase that employee’s stored payslip and must show the figures. No payslip means it says it does not know. HR answers come only from uploaded documents, with a citation. No citation means no answer. Neither path may update salary, CTC, deductions, or claim status. A model may flag an unreadable receipt. It may not change a stored amount.
+Production requires encrypted SQLite with a separate database key; development can explicitly run without encryption, but AI requires encrypted configuration. Drive credentials use AES-256-GCM with a separate secret. JWT signing is not encryption. Existing plaintext databases require explicit migration; backup, disk/host security, key escrow and restore procedures remain operational responsibilities. See [security](SECURITY.md) and [database encryption](DATABASE_ENCRYPTION.md).
 
-## Order
+## Attachments and private storage
 
-1. This page, then domain, SQLite adapter, HR access, a 10,000-row synthetic seed, and org pay questions.
-2. Employee login, monthly payslip, read-only employee view, PDF download.
-3. Reimbursement claims and HR approval.
-4. Grounded payslip explanation, cited document answers, and validation flags.
+Existing salary-sheet, HR-document, employee-claim and chat attachment fields share browser gzip, bounded server decompression, raw malware scan, normalization/required validation, server gzip, final malware scan, advisory AI review and private Google Drive persistence. AI receives only scan-passed content or code-generated validation reports. There is no extra Files or Document assistant sidebar tab.
 
-Tests for the formula, employee isolation, and validation stay fast and local. One concern per commit. Seed data is synthetic.
+ClamAV/format/required-validation failures reject the file; compression is not antivirus and passed scans do not guarantee harmlessness. Drive OAuth uses state/PKCE and the configured app credentials; server-held credentials are not shared with users. Downloads require authentication, owner/HR access, integrity checks and a user-bound application signature valid for five minutes. They are not public Drive sharing URLs. See [secure uploads](SECURE_UPLOADS.md).
 
-## Not specified
+## AI review and conversational assistance
 
-These are named, and the rule for them is not:
+Local Ollama Qwen3/Nomic, LangChain and a bounded LangGraph flow provide advisory review and grounded answers. PDF/image passages and vectors persist in encrypted SQLite; exact cosine retrieval is bounded by document/chunk limits. Policy text uses SQLite FTS; employees see only policy text HR explicitly publishes. Publishing policy text does not publish the private attachment.
 
-- The required-field list, the currency check, claim-amount rules, and receipt rules
-- Sheet, document, and receipt formats
-- The org pay questions
-- Column names beyond the employee, the monthly payslip snapshot, leave days, and claims
+Chat uses the authenticated employee's saved payroll, leave, claims and owned documents; HR chooses an employee explicitly. It supports bounded history, citations, labelled general explanations and safe code-based arithmetic. It has no payroll-writing, approval, browser or arbitrary SQL tools. Missing reasons remain unknown; invalid citations/unsupported sourced numbers are rejected or a saved-payroll summary is used where appropriate.
 
-## Salary editing milestone
+Salary-sheet AI reviews a bounded first-five-row sample/report, not every row. **Valid uploads proceed with a visible unavailable/disabled review status if AI cannot run.** Index failure preserves the original file for retry. Deterministic validation and HR confirmation remain mandatory.
 
-The HR salary editor at `/hr/salary` loads an existing employee by ID and a
-1900–9999 year / 1–12 month. It can create a missing monthly payslip. Employee
-creation, employee directory search, authentication, imports and analytics are
-separate milestones.
+Chat accepts PDFs up to 5 MiB and PNG/JPEG up to the shared 8 MiB limit. Text PDFs use a bounded parser; English OCR supports images/image-only PDFs up to 10 scanned pages with time/size/text limits. Model calls are local-loopback only, bounded/rate-limited, and external tracing is disabled. Conversation history is browser-memory only and resets on full navigation. See [AI operation and limits](DOCUMENT_AI.md).
 
-Required inputs are employee ID, period, annual CTC, supported ISO currency,
-unpaid leave days, other deductions and explicit confirmation. Money inputs are
-non-negative safe integers in minor units; leave days are non-negative integers
-bounded by the actual number of days in the selected month. Negative net pay is
-permitted by the existing formula. Claims require an ID, receipt, valid status
-and non-negative safe integer amount. Existing claims are preserved during salary
-editing; currency changes are blocked when the month has claims.
+## UI, state and optimization
 
-Saving uses the existing domain computation and SQLite transaction, including a
-new monthly salary input record. Claim approval uses that month's saved CTC and
-currency. Existing monthly snapshots are not rewritten by changes to another
-month. Historical records predating monthly input storage fall back to current
-employee CTC because their original annual input cannot be recovered exactly.
-HR should verify the input before saving such a month.
+Responsive role-specific navigation, accessible labels, named months and explicit empty/error/success states must reflect saved records. Initial month uses Asia/Kolkata; invalid explicit periods must not display a different month's pay. Server-supplied currency options/help prevent server/client Intl differences from causing hydration mismatches.
 
-A version fingerprint of saved inputs, payslip, leave and claims rejects stale
-forms, including concurrent saves in the supported single application process.
-Successful writes refresh HR and employee views. Errors retain entered salary
-values; unexpected database errors return a generic message without logging pay.
-At salary milestone completion, the application had no session authentication.
-The authentication milestone below supersedes that limitation.
+Directory SSR seeds React state and an account-scoped JSON memory cache (15-second TTL, 50 entries). Identical pending reads share work; canonical query keys, 300 ms debounce, 500 ms filter-submit throttle, explicit refresh, lifecycle aborts/clearing and sequence guards limit redundant work and stale displays. Mutation/auth/AI responses are not generically cached. Cache freshness is bounded; other users' writes are not pushed instantly to all tabs. Aggregate request diagnostics do not claim full server observability. See [API optimization](API_OPTIMIZATION.md).
 
-Validation: `npm test`, `npx tsc --noEmit`, `npx next build`. Tests cover domain
-validation, database persistence, monthly isolation, preserved claims, stale and
-concurrent edits, confirmation, historical claim recalculation, action feedback,
-and server-rendered form controls. Automated browser interaction and visual
-viewport tests are not included in this milestone.
+## Deployment, verification and explicit limits
 
+One application writer uses encrypted SQLite on persistent disk. The 10,000-row seed/import is tested; this is not a concurrent-load benchmark. A PostgreSQL adapter becomes appropriate when multiple app writers are required; Redis, sharding and a second database engine are not part of this implementation. Same-host Ollama, OCR binaries, ClamAV, HTTPS and Drive OAuth are deployment prerequisites for the full feature set.
 
-## Authentication milestone
+SQLite, Drive and AI are not a distributed transaction. Durable ingestion/retry jobs, orphan reconciliation, retention/deletion tooling, automated backup/restore operations, notifications, MFA/invitations, persistent chat history, employee-name/profile management, complete payroll tax compliance and broader model evaluation are not delivered features.
 
-User direction: add JWT sessions, bearer-token authentication and protections for
-employee payroll and other sensitive data. This milestone adds HR/employee login,
-revocable 30-minute JWT sessions, HttpOnly browser cookies, API bearer issuance,
-server-side role/employee ownership checks on all protected entry points, strict
-mutation Origin checks for cookies, scrypt passwords, persistent SQLite login
-throttling, account provisioning/reset/disable commands, private database-file
-permissions and security response headers. The database engine and payroll
-computation are preserved. `jose` handles JWT signing and verification.
-
-Accounts are provisioned by a trusted host administrator, with no public signup
-or default passwords. Employees are linked to existing employee IDs. See
-`SECURITY.md` and `.env.example` for required signing-key/origin configuration,
-account commands, endpoint contracts, session policy and deployment controls.
-SQLite file contents are not encrypted; encrypted disks and backups are a
-required deployment responsibility for real payroll data.
-
-Checks: `npm test`, `npx tsc --noEmit`, `npx next build`, then
-`npm run test:auth:http` for real production HTTP tests against a temporary,
-isolated synthetic database. The HTTP check binds a localhost port and simulates
-a production HTTPS origin in headers; it does not test TLS termination or browser
-cookie enforcement. Tests cover password hashing, JWT policy/tampering/expiry,
-revocation, account disable/reset, persistent throttling, role isolation, employee
-ID tampering, cookie and bearer routes, CSRF denial, unauthorized salary actions,
-server page guards, private file permissions and existing payroll behavior.
-
-## Professional UI milestone
-
-User direction: redesign the existing HR and employee UI professionally, make
-calendar months understandable, and make each account's role-specific section
-clear. This milestone changes presentation and navigation while preserving the
-Next.js app, authentication boundaries, SQLite data, payroll calculation, and
-existing workflows. It does not implement spreadsheet import or new document
-formats; those remain separately approved milestones.
-
-The shared Paydesk workspace provides responsive navigation, an HR overview,
-salary editing, an employee payslip/claims area, and consistent login and
-permission screens. Login lands directly in the account's HR or employee area.
-Month selectors show January–December while submitting 1–12 to the existing
-backend. Headings show month names and years. Periods without query parameters
-use the current month in Asia/Kolkata instead of hardcoded January 2026.
-Invalid explicit periods show an error without displaying another month's pay.
-
-Money displayed from saved payslips uses the currency's minor-unit precision.
-Editing amounts still uses safe integer minor units, with currency-specific help.
-No net-pay computations are added to the UI. Organization totals stay grouped by
-currency. Reimbursement counts accurately describe the current page and all-
-period inbox rather than claiming a global count unavailable from the repository.
-
-Empty payroll periods have explanatory states and no invented totals or charts.
-Existing seeded data is retained. Database clearing, switching the active data
-source, CSV/Excel import and document generation are outside this milestone.
-The existing policy-text save and cited exact-text lookup remain available and
-are labelled accordingly; they are not presented as file-upload functionality.
-
-Successful policy saves, claim approval and employee claim submission return
-clear confirmation messages. Route-handler return redirects are relative so
-browser navigation preserves the original HTTPS origin behind a reverse proxy.
-CSRF and role/ownership validation remain unchanged.
-
-Validation includes unit tests for period handling, timezone boundaries and
-currency formatting; rendered component and real SQLite page integration tests;
-and isolated production browser checks at desktop, tablet and mobile widths.
-`npm run test:ui:browser` uses Chrome (CHROME_PATH configurable), a temporary
-synthetic database, random test credentials, and a local HTTPS reverse proxy. Its
-ephemeral certificate is trusted only by the isolated test browser profile. It
-checks role landing, named months, empty states, a real salary save, claim approval,
-role-specific navigation and horizontal overflow, and saves screenshots under the
-OS temporary directory in `paydesk-ui-review`. The test server and data are
-removed afterward. No real payroll data is read by the browser fixture.
-
-## Employee salary entry and sheet import milestone
-
-User authorization: add manual employee salary entry and a salary-sheet upload
-alternative to editing an existing employee by ID. The UI milestone was committed
-before implementation. HR now has separate Add employee, Upload salary sheet and
-Salary editor workflows; HR policy text remains a separate document workflow.
-
-Manual creation accepts currency-unit decimal amounts, converts exactly to safe
-integer minor units, rejects existing employee IDs and stages a first monthly
-payslip. CSV and single-worksheet XLSX uploads use the seven-column template
-already supplied: employeeId, year, month, annualCtcMinor, currency,
-unpaidLeaveDays, otherDeductionsMinor. The importer supports one payroll month and
-10,000 employee rows per 2 MiB file. Detailed rules and examples: `IMPORT_GUIDE.md`.
-
-The same validated, owner-bound SQLite review mechanism serves both paths. No
-payroll is written before explicit confirmation. Reviews expire after 15 minutes,
-are paginated at 25 rows, and have bounded retention. Confirmation revalidates
-versions and saves the entire batch atomically using the existing save-month
-routine and domain payslip computation. SQLite savepoints preserve single-row
-transaction behavior inside a batch. Existing claims and other months' snapshots
-are preserved. Confirmation replay is idempotent. New login accounts are not
-created from salary records.
-
-XLSX parsing uses read-excel-file. fflate bounds ZIP entries/expanded sizes and
-canonicalizes ZIP metadata before parsing. Formula cells, external links, XML
-entities, excessive worksheet ranges, invalid headers, duplicate employee IDs,
-unsafe monetary integers and invalid leave/period/currency values are rejected.
-Templates and previews/confirmation require HR authorization. Cookie mutations
-retain exact-origin validation. Review access is restricted by account ID.
-
-Checks: unit tests for CSV/XLSX parsing and exact decimal conversion; repository
-integration tests for confirmation, ownership, expiry, stale claims, preservation,
-10,000-row import and all-or-nothing rollback; real route/action tests; rendered
-page tests; TypeScript and production build; isolated Chrome tests for manual
-creation, Excel import, CSV update, review, confirmation and dashboard refresh.
-
-Hydration follow-up: Node and browser ICU versions can expose different currency
-lists (and formatting). Currency options and salary minor-unit help are now
-created in Server Components and passed as serializable props to both client
-forms. Initial client rendering does not recompute either from browser Intl.
-Regression tests simulate different client metadata, and the browser workflow
-reverses the browser currency list and fails on recoverable hydration errors.
-
-## Employee directory milestone and architecture review
-
-User direction: locate the employee list, reduce repeated login, and review an AI
-assistant/import-review design, including whether LangChain, LangGraph and vector
-storage are appropriate. The committed salary-import milestone precedes this work.
-Only the employee directory is implemented here. `/hr/employees` is HR-only and
-provides case-sensitive ID-prefix search, current-CTC currency filtering, selected
-monthly snapshot pay, 25-row keyset pagination and salary-editor links. Employees
-without the selected month's payslip remain visible. No profile names are invented.
-Current annual CTC and historical snapshot currencies/amounts are kept distinct.
-
-`ARCHITECTURE_REVIEW.md` records current limitations and the proposed next steps:
-rotating refresh sessions, private/cited document retrieval, role-scoped read-only
-chat, then advisory import analysis. Session/AI settings in that review are proposals,
-not behavior added in this milestone. The current 30-minute login policy is unchanged.
-
-
-## Rotating refresh-session milestone
-
-The employee-directory milestone was committed before this work. User direction:
-reduce repeated login with refresh tokens while retaining role-based data isolation
-and security controls. Access JWTs now last 10 minutes; rotating opaque refresh
-credentials allow an active eight-hour work session with a 30-minute inactivity
-limit. Status polling does not count as activity. Login/logout/reset/disable and
-signing-key changes invalidate the appropriate refresh families as documented in
-`SECURITY.md`. No AI integration is added by this milestone.
-
-Browser cookies remain HttpOnly, Secure in production, host-only and same-site.
-Refresh is origin-checked; only token hashes are stored. Rotation is atomic,
-consumed-token replay revokes the family, and browser tabs coordinate with Web
-Locks. API clients have an explicit JSON refresh endpoint. Renewal preserves
-safe return URLs, reviews and form values, with warnings and new-tab password
-reauthentication for actual timeout. The 15-minute salary-review lifetime is
-independent and unchanged. Legacy JWT-only sessions require signing in once.
-
-Validation includes rotation/replay/concurrency, idle/absolute expiry, family
-isolation, database migration, logout after access expiry, reset/disable/key
-rotation, CSRF, safe redirects, HTTP cookie/API contracts and browser recovery.
-The isolated browser test expires access sessions in its synthetic database,
-restores the exact URL, renews simultaneously in two tabs and submits a salary
-form without losing entered values, in addition to the existing payroll/import
-and role-isolation checks. No production credentials or payroll values are logged.
-
-## Uploaded-PDF AI milestone
-
-The user's clarified scope supersedes the earlier restriction that an employee
-assistant can only paraphrase a database payslip. Both roles now have a separate
-Document assistant for their authorized, selected uploaded PDF. It does not
-implicitly fetch policies or payroll. Employee uploads are visible to their owner
-and authorized HR; HR uploads are not automatically published to employees.
-
-Implementation uses LangChain, LangGraph, OpenAI, Qdrant and private S3, with
-SQLite ownership/chunks, authenticated downloads, explicit processing consent,
-validation, page citations and safe provider failures. It cannot change pay or
-submit/approve a reimbursement. See `DOCUMENT_AI.md` for setup, limits and test
-scope. Existing saved-payroll explanations and HR exact-text policy lookup remain.
-Notifications for uploads, claims, approvals and payslip processing remain the next
-separate milestone; no email, push or in-app notification delivery is added here.
-
-The uploaded-PDF milestone also offers `AI_PROVIDER=ollama` for free local model
-inference using Qwen3 and Nomic embeddings, while retaining S3 and Qdrant. OpenAI
-is optional in this mode; no silent paid fallback exists. Provider-specific vector
-collections and saved document profiles prevent incompatible retrieval. See
-`DOCUMENT_AI.md` for installation, configuration and migration behavior. This is
-an adjustment to the current AI milestone, not implementation of notifications.
-
-## Current priority: compression and scanning in existing upload locations
-
-This direction supersedes the earlier uncommitted document-assistant milestone.
-No new upload/File tabs are added. Existing salary-sheet import, HR document and
-employee receipt forms use a shared browser-gzip -> bounded decompression ->
-ClamAV -> deterministic format validation -> server gzip -> final scan -> private
-Google Drive pipeline. Existing forms show signed, user-bound five-minute download
-links. Scanner unavailable/stale/errors fail closed. Google OAuth setup is inline
-in the existing HR document section. S3 is removed; AI is disabled/deferred. See
-SECURE_UPLOADS.md for configuration, verification and practical limitations.
+Acceptance coverage and execution evidence are maintained separately in [current test cases](docs/CURRENT_TEST_CASES.md). Existing focused tests remain intact; new cross-feature tests supplement them. Unit/HTTP/browser fixtures must not be presented as production deployment, live-provider, malware-certification or load-test evidence.

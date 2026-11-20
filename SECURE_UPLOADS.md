@@ -4,7 +4,7 @@ This milestone adds no Files or upload navigation tabs. It applies one shared
 pipeline to the existing HR salary-sheet import, HR document form, and employee
 reimbursement form. Optional PDF/JPEG/PNG attachment fields live in those forms.
 Payroll math, salary editing, approval and confirmed import remain unchanged.
-AI routes are disabled/deferred until this foundation is reviewed.
+AI routes are opt-in and reuse this upload foundation. See DOCUMENT_AI.md for local-model setup.
 
 ## Pipeline and response
 
@@ -162,8 +162,7 @@ malware is used and no Google Drive upload is made by this command.
   approved synthetic data remains necessary after your OAuth setup. No Google
   account was connected automatically. Browser tests use isolated Drive and ClamAV
   protocol fixtures; the separate scanner regression exercises the real engine.
-- AI endpoints return deferred responses regardless of AI enable flags. Notifications
-  and AI processing remain future milestones after review and commit.
+- AI endpoints require encrypted local-model configuration and use this same secure upload service or existing scan-passed PDF/image attachments. Notifications remain a separate milestone. See DOCUMENT_AI.md.
 
 References: [OWASP upload guidance](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html),
 [ClamAV scanning](https://docs.clamav.net/manual/Usage/Scanning.html),
@@ -186,3 +185,7 @@ with a synthetic Google endpoint. No Google account is contacted by that test.
 ### Google Drive storage quota
 
 A connected account can authorize successfully while new uploads fail with Google's `storageQuotaExceeded` error. Paydesk now reports this as HTTP 507 with a specific storage-limit message. HR must free storage in the connected Google account, including trash, and retry. Reconnecting the same account does not increase its quota. The import remains unsaved when storage fails. Provider response bodies are bounded and only known reason codes are mapped to safe user messages; raw Google messages, credentials and file identifiers are not displayed. Rate limits and expired authorization have separate retry/reconnect messages. See Google's [Drive error guide](https://developers.google.com/workspace/drive/api/guides/handle-errors#storageQuotaExceeded).
+
+## Advisory upload review
+
+All existing attachment fields now request local AI purpose/readability review after both malware scans and deterministic validation. Salary-sheet AI receives a bounded sample and validation report; code validates all rows. AI unavailable/disabled status is visible and does not block valid uploads. PDF/image indexing follows private Drive storage and preserves the file if it fails. Chat attachments use this same pipeline. OCR dependencies and limits are documented in DOCUMENT_AI.md.

@@ -1,200 +1,41 @@
-# Employee access, sessions and AI: architecture review
+# Paydesk — current architecture decisions
 
-Reviewed 16 November 2026. Only the employee-directory milestone is implemented
-in this change. Session renewal and AI below are proposed next milestones.
+Current system review, 21 November 2026. This file describes the implemented architecture, not the original milestone proposals. The one-page [ARCHITECTURE.md](ARCHITECTURE.md) and [architecture PDF](docs/architecture-one-page.pdf) summarize the entire system. [Historical architecture proposals](docs/ARCHITECTURE_HISTORY.md) and [implementation history](docs/IMPLEMENTATION_HISTORY.md) preserve the step-by-step evolution separately.
 
-## What exists today
+## Implemented boundaries and decisions
 
-- HR salary creation, CSV/XLSX validation, private review and atomic confirmed import.
-- Role-bound authentication, revocation and a fixed 30-minute session lifetime.
-- Employee-owned payslips and claims; HR approval through the tested payroll function.
-- SQLite employee pagination, monthly snapshots, policy text and exact-text lookup.
-- No live LLM integration, document extraction, semantic retrieval or conversational bot.
-  The existing receipt flag checks text characters, not receipt images or OCR.
-- Employee IDs and salary inputs are stored; employee names and deduction reasons
-  are not stored. There is no honest way to fabricate those in a directory or chatbot.
+| Area | Current implementation and reason | Boundary / tradeoff |
+|---|---|---|
+| Application | One Next.js/React/TypeScript application; HR and employee routes share presentation primitives. Route handlers and server actions delegate to services/repositories. | Every protected entry point checks authorization; hiding UI is not access control. |
+| Payroll domain | One tested computation uses integer minor units, explicit rounding and saved monthly snapshots. Version checks reject stale edits. | AI/UI do not compute processed pay. Other deduction reasons and statutory tax rules are not inferred. |
+| Persistence | One SQLCipher-mode encrypted SQLite database on persistent disk; repository boundary and indexes support pagination/aggregates. | One app writer; move the adapter to PostgreSQL for multiple writers. Seed/import counts are not throughput benchmarks. |
+| Import | CSV/XLSX → bounded deterministic validation → owner-bound draft → HR review/confirmation → atomic batch commit. | All rows are checked by code; replay is idempotent for committed drafts, not every POST. Old claims/months survive updates. |
+| Identity | Salted scrypt; signed 10-minute access JWTs plus hashed rotating refresh credentials and revocable session families. | 30-minute idle/8-hour absolute limits remain; refresh is a usability/security tradeoff, not unlimited login. Accounts are explicitly provisioned. |
+| Confidentiality | Database page encryption, AES-256-GCM Drive credential protection, separate secrets, HTTPS/secure cookies and server access checks. | Running server decrypts data; compromised hosts, leaked keys and plaintext backups remain risks. JWT signatures do not conceal payloads. |
+| Attachments | Shared existing-form/chat upload service: browser gzip → scan → normalize/validate → gzip → scan → advisory review → private Drive → document indexing. | Scanning fails closed. AI outage does not block otherwise valid uploads. Drive/SQLite consistency needs reconciliation after crashes. |
+| Downloads | Authenticated application endpoint with owner/HR access, byte integrity checks and user-bound five-minute signature. | No public Drive permissions or raw AI-download bypass. |
+| Client data | SSR seeds React state and a 15-second/50-entry JSON memory read cache; pending request sharing, debounce/throttle and response sequence checks. | Focused directory cache, no persistent payroll browser storage, no generic mutation cache or instantaneous cross-user invalidation. |
+| Request control | Bounded payloads, login/request quotas, local concurrency/time limits, pending submits and safe aggregate diagnostics. | No distributed queue/rate service or complete production tracing platform. |
+| AI | Local Qwen3/Nomic through LangChain and LangGraph; role-scoped payroll/policy/document context; code arithmetic and cited plain-text answers. | No autonomous tools, writes or claim approvals. Numeric/source checks cannot prove semantic correctness. |
+| Retrieval | Encrypted SQLite passages/vectors, bounded exact cosine search; SQLite FTS for policy text. | No active Qdrant deployment; bounded retrieval can omit relevant evidence at larger scale. |
+| Document audience | Employee documents remain owner/HR scoped; employee policy access requires explicit HR publication of text. | Sharing text does not expose an HR attachment. Body/publication updates save atomically. |
+| OCR | Bounded PDF parser plus native English Poppler/Tesseract through memory pipes for image-only PDFs/images. | Printed text recognition, not arbitrary vision; scan/handwriting/layout quality affects results. |
+| UX | Floating Ask Paydesk in both workspaces; no separate Document assistant/Files tab. Named months and server-supplied currency metadata. | Chat history resets on full navigation; saved attachments/indexes remain. |
 
-## 1. Employee directory — implemented milestone
+## Critical workflows
 
-`/hr/employees` is HR-only and available as Employees in the sidebar and View
-employees on the dashboard. It lists saved employees from manual entry and imports,
-with current annual CTC, the selected month's saved net pay and an Edit salary link.
-Employees without a payslip for that month remain visible with an explicit status.
+1. **Salary save:** authorize HR → validate/confirm → compare expected version → compute through domain function → commit monthly inputs/snapshot/leave/claims together → revalidate views.
+2. **Sheet import:** secure upload/scan → parse/validate every row → advisory sample review → stage owner-bound draft → paginated HR review → explicit confirmation/current-version checks → all-or-nothing commit.
+3. **Claim:** authenticated employee submits pending claim → no net-pay increase → HR confirms approval → affected saved month recalculated; other employees/months remain unchanged.
+4. **Upload/chat:** scan-passed normalized content → purpose review → private storage → OCR/extraction/index; questions gather authorized saved context and passages → bounded model response → source/number checks → answer or safe fallback.
+5. **Renewal:** short access expires → coordinated same-origin refresh → atomic token rotation within idle/absolute limits; replay/logout/reset/disable revokes the appropriate family.
 
-Search is by case-sensitive employee ID prefix. Currency filtering applies to the
-current CTC currency, not historical payslip currency. Both amounts are labelled
-with their own currency. Results use 25-row keyset pages and existing payslip
-indexes, with a new (currency, employee_id) employee index. The browser never loads
-the entire employee table. No duplicate employee data or names are invented.
+## Deployment and operational gaps
 
-## 2. Session renewal — recommended next implementation milestone
+Deploy one app writer with persistent encrypted disk, separate protected secrets, HTTPS, a configured Google OAuth connection, reachable ClamAV, same-host loopback Ollama/models and native OCR executables. Localhost in production is not the developer's laptop. A typical ephemeral serverless deployment does not automatically supply these prerequisites.
 
-Repeated logout is caused by a fixed absolute 30-minute expiry; there is currently
-no renewal endpoint. Rotating refresh tokens are appropriate for keeping an
-actively working user signed in. Simply increasing JWT expiry is insufficient.
+No distributed transaction spans Drive and SQLite. Durable jobs, cleanup/reconciliation, retention administration, automated backup/restore/key escrow, notifications, persistent chat history, broader model evaluation and measured concurrency/performance targets remain follow-up work. See [security](SECURITY.md), [upload operation](SECURE_UPLOADS.md) and [AI deployment](DOCUMENT_AI.md).
 
-Recommended starting policy, configurable and subject to acceptance:
+## Acceptance evidence
 
-- Short-lived access JWTs, e.g. 10 minutes.
-- An opaque random refresh token in a separate HttpOnly, Secure, same-site cookie.
-  Store only its hash and session-family metadata in the same SQLite database.
-- Rotate the refresh token on every successful refresh in an atomic transaction.
-  Detect replay and revoke the token family and associated access sessions.
-- An 8-hour maximum working session, with a 30-minute inactivity limit. Background
-  polling alone must not keep an unattended session alive indefinitely.
-- Silent renewal during active use, with same-origin protection. No token in
-  localStorage, a URL, an AI context or a log.
-- Logout, password reset and account disable revoke both token types immediately.
-  Recheck account state on every refresh and sensitive request.
-- Serialize refresh across browser tabs and coordinate retries. Test concurrent
-  refresh, expired access on page navigation, offline recovery and reuse detection.
-- Warn before a genuine timeout without silently copying salary forms into
-  persistent browser storage. Review-draft expiry remains independent of login.
-
-This preserves the existing authorization and revocation controls, but an 8-hour
-active session has a different exposure window from a fixed 30-minute session.
-It cannot honestly be described as identical security. Absolute/idle limits and
-rotation make that usability tradeoff explicit and bounded.
-
-Reference: RFC 9700, refresh-token protection and replay prevention:
-https://www.rfc-editor.org/rfc/rfc9700.html#section-4.14
-
-## 3. Document foundation — before policy chat
-
-Introduce real PDF/text document ingestion first, then supported DOCX/image/OCR
-paths as separately tested additions. Accept explicit formats and sizes rather
-than promising unrestricted 'any document' support. Extract text and preserve
-file identity, document version and page/section references for citations.
-
-Document ownership and audience must be established before retrieval:
-
-- HR-only policies/documents default to HR-only access.
-- HR can publish selected policies to employees explicitly.
-- An employee's uploaded question/receipt/supporting file remains private to that
-  employee and authorized HR; it never automatically becomes a company policy.
-- Query ownership/visibility before retrieval, not after a model has seen content.
-- Uploaded text is untrusted evidence, never instructions granting new permissions.
-
-Keep binary files in private persistent storage and metadata/chunks in SQLite,
-with authenticated file access and defined retention. Do not use a public folder
-for employee documents. Provision the AI provider and data-handling settings
-before sending any real payroll or document text to an external service.
-
-## 4. Read-only, role-scoped chat — recommended AI starting point
-
-Use one chat implementation with separate server-authorized tool sets. The model
-must not decide the caller's role or employee ID. No arbitrary SQL or write tools.
-
-Employee tools return only the caller's stored payslip, leave and claim data for
-a selected month, plus policies explicitly published to employees and that caller's
-private question documents. For 'why was my salary deducted?', the answer should
-show the stored unpaid deduction, leave days, other deductions and reimbursements,
-with a link/citation to the saved payslip. A missing reason must be acknowledged.
-
-HR tools can retrieve authorized HR policies and, under the user's expanded
-request, selected read-only payroll/claim records and currency-grouped totals.
-Structured financial questions should use parameterized repository queries;
-policy questions should use retrieved document passages. This expanded scope
-must supersede the earlier document-only HR assistant rule in the AI milestone's
-requirements, without granting a salary-writing capability.
-
-The tested domain function remains the sole payroll calculator. A model explains
-stored figures and may request a bounded application-calculated scenario; it does
-not invent or overwrite salary arithmetic. No saved payslip means no assertion
-about an employee's pay. No supporting policy passage means no policy answer.
-
-Other deductions currently store an amount without a reason. To answer the
-business reason accurately, HR must first be able to record a reason/category.
-Claim status currently has pending/approved only, without rejection explanations.
-Those domain fields need their own reviewed schema/UI changes before a chatbot
-can claim to explain a rejection or the origin of an arbitrary deduction.
-
-## 5. AI-assisted sheet review
-
-Keep the mandatory path deterministic:
-
-    Parse -> validate -> optional AI review -> HR preview -> explicit confirmation
-                                                  -> atomic payroll commit
-
-The current code already handles required fields, exact monetary values, duplicate
-IDs, periods, currency, leave and conflicts. Those checks remain hard gates.
-AI may explain errors, suggest a legacy-header mapping, summarize changes or flag
-unusual changes for HR review. Suggested mappings must be approved and transformed
-by deterministic code; a model must never silently change an amount or claim status.
-
-Use explicit business thresholds when required, not a model-invented 'fair salary'
-rule. Batch bounded features/differences, avoiding whole-table prompts. Return
-structured warnings tied to source row numbers. Model warnings do not masquerade
-as validation facts. An AI outage should leave deterministic validation available,
-with a clearly labelled unavailable review; HR remains responsible for confirmation.
-
-## LangChain, LangGraph and vector storage
-
-Recommendation: retain Next.js/TypeScript and SQLite for this assessment.
-
-- **LangChain:** optional. Use it if document/retriever/provider adapters simplify
-  the tested implementation. A small typed AI-provider interface and read-only
-  tools are sufficient initially; adding a framework alone does not add safety.
-- **LangGraph:** defer until a workflow needs resumable multi-step execution,
-  persisted human review or branching extraction/retrieval with retries. A simple
-  policy Q&A request does not need a graph runtime. If introduced, checkpoint in
-  the same database where feasible and keep payroll writes outside model tools.
-- **Vector database:** not required because there are 10,000 employees. Employee
-  data belongs in indexed structured queries, not approximate vector retrieval.
-  Start policy retrieval with SQLite FTS5 and citations. Measure a representative
-  question set; add embeddings/hybrid search within the same SQLite architecture
-  if synonym/semantic recall is inadequate. Assess native extension/deployment
-  support before choosing an embedding index. A separate vector service adds
-  operations and access-control duplication without evidence that it is needed.
-
-References:
-https://www.sqlite.org/fts5.html
-https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/overview.mdx
-
-## Delivery sequence and release evidence
-
-One committed milestone at a time:
-
-1. Employee directory and salary navigation (this change).
-2. Rotating refresh sessions and timeout UX.
-3. Private document ingestion, visibility, citations and retrieval.
-4. Role-scoped conversational assistant and provider integration.
-5. Optional AI-assisted import review and any needed deduction/claim reason fields.
-
-For session renewal, test rotation/replay, cross-tab races, idle/absolute expiry,
-logout and account disable. For AI, test cross-employee and document isolation,
-prompt-injection attempts, citation correctness, exact numeric grounding, missing
-records/reasons, provider failure and a fixed evaluation question set. Model names,
-provider credentials, permitted data sharing and cost budgets are required before
-the live AI milestone, not before finishing the employee directory.
-
-
-## Refresh milestone implementation update
-
-The rotating-session proposal is now implemented in the subsequent refresh
-milestone. See `SECURITY.md` for actual policy, API contracts and migration notes.
-Document ingestion and live AI integration remain proposed future milestones.
-
-## Clarified PDF scope and implementation update
-
-The user's subsequent clarification requests Q&A over the selected uploaded PDF,
-including S3 storage, rather than implicit policy retrieval. This milestone now
-implements that path with LangChain splitters/model adapters, a bounded LangGraph
-retrieval/generation graph, Qdrant vectors and private S3 objects. The earlier
-FTS5/no-framework recommendation above is retained as review history, not the
-implemented PDF architecture. Payroll stays in SQLite. See `DOCUMENT_AI.md` for
-actual behavior, configuration, verification and limitations. Notifications and
-AI-assisted salary-sheet review remain separate future milestones.
-
-Local inference is now selectable through `AI_PROVIDER=ollama`, using LangChain's
-Ollama adapters with Qwen3 and Nomic. LangGraph and S3 remain; Qdrant collections
-are isolated by embedding profile. OpenAI remains an explicit alternative, with no
-paid fallback from local mode. This extends the same uncommitted PDF milestone.
-
-## Superseding user direction: secure uploads first, no additional upload tabs
-
-The active milestone now secures file submissions within existing forms, replaces
-S3 with private Google Drive, and returns signed application URLs. Google Drive
-is storage only; client/server gzip is not a malware guarantee. ClamAV scans
-original and final bytes with fail-closed behavior. AI is explicitly deferred;
-earlier prototypes remain inactive. See SECURE_UPLOADS.md for current behavior.
+[Current test cases](docs/CURRENT_TEST_CASES.md) maps the final requirements to focused suites, added cross-feature integration cases and manual/deployment checks. Original automated tests remain in `test/`. Cross-feature acceptance tests use an isolated encrypted database and synthetic users; external service fixtures are distinguished from live checks. Historical pass counts in milestone documents are snapshots, not fresh execution claims.

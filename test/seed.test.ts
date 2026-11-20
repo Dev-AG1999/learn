@@ -7,6 +7,8 @@ import { computePayslip } from "../src/domain/payslip.ts"
 import { openPayrollDatabase } from "../src/db/sqlite-payroll.ts"
 import { seedSyntheticEmployees, syntheticMonth } from "../src/db/seed.ts"
 
+// This disk-backed 10,000-row integration check is not a wall-clock benchmark.
+// Allow contention from parallel password hashing and PDF/model integration tests.
 test("the synthetic seed is 10,000 employees and matches the payslip function", async () => {
   const dir = mkdtempSync(join(tmpdir(), "payroll-seed-"))
   const db = openPayrollDatabase(join(dir, "payroll.sqlite"))
@@ -44,4 +46,4 @@ test("the synthetic seed is 10,000 employees and matches the payslip function", 
     10_000,
   )
   db.close()
-})
+}, 20_000)

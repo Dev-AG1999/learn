@@ -164,7 +164,7 @@ macros, external links and XML entities are checked before the XLSX reader runs.
 Only normalized review inputs are stored, not the raw uploaded file. Up to three
 recent reviews per account and 50 globally bound temporary storage. Expired data
 is cleaned during subsequent staging; legacy plaintext databases and backup encryption remain a
-host/deployment responsibility. Do not send file contents to logs or AI services.
+host/deployment responsibility. Never log file contents. The opt-in local AI milestone below permits bounded scan-passed content and normalized samples to reach the local model; external AI/tracing services remain disabled.
 Employee salary creation does not create authentication accounts or passwords.
 
 
@@ -238,8 +238,7 @@ reverse-proxy/access logs. Application errors do not expose provider secrets.
 The changes apply to existing salary import, HR document attachments and employee
 reimbursement attachments. Existing payroll calculations and claim approvals are
 not delegated to storage or antivirus. Optional text-only forms still work. No new
-Files tabs are introduced. Previous AI upload/answer endpoints are explicitly
-blocked even if AI_DOCUMENTS_ENABLED=true, avoiding an unscanned alternate path.
+Files tabs are introduced. AI upload/answer endpoints are gated by encrypted local-model configuration and reuse the secure upload pipeline or an already scan-passed file; no unscanned upload path is enabled.
 
 Antivirus cannot establish that every file is harmless. The UI labels successful
 checks as scans passed, not virus-free. Crashes/cleanup and provider quota failures
@@ -248,3 +247,7 @@ backups remain deployment responsibilities. No real Google credentials were
 provisioned by this change; live Drive validation follows administrator setup.
 
 Database encryption setup, migration, key management, and explicit limits are documented in [DATABASE_ENCRYPTION.md](DATABASE_ENCRYPTION.md).
+
+## Shared upload review and chatbot
+
+AI is opt-in and local only. API requests retain session/bearer and CSRF checks. Employee identity and source ownership/ready status are checked before retrieval; HR indexing does not transfer ownership. AI only receives scan-passed content or code-generated validation reports. Purpose review is advisory and unavailable AI does not bypass deterministic validation or block otherwise valid uploads. Extracted passages/vectors remain in encrypted SQLite. OCR uses bounded native memory pipes. Policy text is private unless HR explicitly publishes it; body/publication changes are atomic. The chatbot receives authorized payroll, published policies and bounded document context, with no writing, approval or browsing tools. External tracing must be disabled. Sources and numeric claims are checked; outputs remain advisory plain text. Original attachments survive index failures. See DOCUMENT_AI.md for setup, runtime limits and retention gaps.
