@@ -15,7 +15,8 @@
     "test:ui:browser": "node --experimental-strip-types scripts/check-ui-browser.ts",
     "test:uploads:scanner": "node --experimental-strip-types scripts/check-upload-scanner.ts",
     "db:encrypt": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/encrypt-database.ts",
-    "ai:check": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/check-local-ai.ts"
+    "ai:check": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/check-local-ai.ts",
+    "uploads:worker": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/upload-worker.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

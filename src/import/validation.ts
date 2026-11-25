@@ -1,3 +1,4 @@
+import { NEW_EMPLOYEE_ID } from "../employee-id.ts"
 import { validatePayrollInput } from "../domain/payslip.ts"
 import { validateSalary } from "../salary-validation.ts"
 import { MAX_IMPORT_ROWS, type PayrollEntry, type RowFailure } from "./types.ts"
@@ -28,7 +29,7 @@ export function validateEntries(rows: readonly PayrollEntry[]): RowFailure[] {
       ...validateSalary({ ...row, claims: [], confirmed: true }),
       ...validatePayrollInput(row),
     ]
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(row.employeeId))
+    if (!NEW_EMPLOYEE_ID.test(row.employeeId))
       errors.push(
         "Employee ID must be 1–64 letters, digits, hyphens or underscores and start with a letter or digit."
       )

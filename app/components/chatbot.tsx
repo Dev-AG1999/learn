@@ -1,7 +1,9 @@
 "use client"
+import { EMPLOYEE_ID, MAX_EMPLOYEE_ID_LENGTH } from "../../src/employee-id.ts"
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { apiFetch } from "../../src/client/api.ts"
 import { ensureSession } from "../../src/auth/browser.ts"
+import { submitUpload } from "../../src/files/jobs/browser.ts"
 import { compressFormFiles } from "../../src/files/browser.ts"
 import { monthNames } from "../../src/presentation.ts"
 import { Icon } from "./ui-icon.tsx"
@@ -37,6 +39,7 @@ export function Chatbot({
   const [attachments, setAttachments] = useState<Attachment[]>([]),
     [recent, setRecent] = useState<Attachment[]>([])
   const [review, setReview] = useState<UploadReview | null>(null)
+  const [uploadStatusUrl, setUploadStatusUrl] = useState("")
   const pending = useRef(false),
     loaded = useRef(false),
     fileInput = useRef<HTMLInputElement>(null)
@@ -85,7 +88,7 @@ export function Chatbot({
         Number(year) > 9999
       )
         throw new Error("Choose a valid payroll year.")
-      if (selectedEmployee && !/^[A-Za-z0-9_-]{1,64}$/.test(selectedEmployee))
+      if (selectedEmployee && !EMPLOYEE_ID.test(selectedEmployee))
         throw new Error("Choose a valid employee ID.")
       const session = await ensureSession()
       if (session.timing.userId !== userId)
@@ -108,10 +111,12 @@ export function Chatbot({
         form.set("attachment", file)
         await compressFormFiles(form, ["attachment"])
         setBusy("Scanning attachment and reviewing its fields…")
-        const upload = await apiFetch("/api/chat/attachments", {
-          method: "POST",
-          body: form,
+        setUploadStatusUrl("")
+        const upload = await submitUpload("/api/chat/attachments", form, (message, url) => {
+          setBusy(message)
+          setUploadStatusUrl(url)
         })
+        setUploadStatusUrl("")
         const result = await upload.json()
         if (!upload.ok)
           throw new Error(result.error ?? "Attachment could not be uploaded.")
@@ -209,7 +214,7 @@ export function Chatbot({
                       <input
                         value={selectedEmployee}
                         onChange={(event) => setEmployee(event.target.value)}
-                        maxLength={64}
+                        maxLength={MAX_EMPLOYEE_ID_LENGTH}
                         placeholder="Choose an employee ID"
                         disabled={!!busy}
                       />
@@ -368,7 +373,8 @@ export function Chatbot({
                     </button>
                   </fieldset>
                 </form>
-                {busy && (
+                {uploadStatusUrl && <a href={uploadStatusUrl}>Check upload status</a>}
+              {busy && (
                   <p role="status" className="field-help">
                     {busy}
                   </p>

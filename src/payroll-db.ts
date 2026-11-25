@@ -17,9 +17,17 @@ export function preparePayrollPath(): string {
 export async function withPayroll<T>(run: (db: PayrollRepository) => Promise<T>): Promise<T> {
   const path = preparePayrollPath()
   const db = openPayrollDatabase(path)
+  let operationFailed = false
   try {
     return await run(db)
+  } catch (error) {
+    operationFailed = true
+    throw error
   } finally {
-    db.close()
+    try {
+      db.close()
+    } catch (error) {
+      if (!operationFailed) throw error
+    }
   }
 }

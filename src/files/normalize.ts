@@ -1,6 +1,6 @@
 import { Worker } from "node:worker_threads"
 import { resolve } from "node:path"
-import { FileError, type FileKind } from "./types.ts"
+import { FileError, NORMALIZATION_TIMEOUT_MS, type FileKind } from "./types.ts"
 export function normalizeUpload(
   bytes: Uint8Array,
   kind: FileKind
@@ -20,7 +20,7 @@ export function normalizeUpload(
     const timer = setTimeout(() => {
       void worker.terminate()
       reject(new FileError("File validation timed out. Try a smaller file."))
-    }, 15_000)
+    }, NORMALIZATION_TIMEOUT_MS)
     worker.once("message", (result: { bytes?: Uint8Array; error?: string }) => {
       received = true
       clearTimeout(timer)

@@ -1,6 +1,6 @@
 "use client"
 import type { UploadReview } from "../../../src/ai/review.ts"
-import { apiFetch } from "../../../src/client/api.ts"
+import { submitUpload } from "../../../src/files/jobs/browser.ts"
 
 import { compressFormFiles } from "../../../src/files/browser.ts"
 import { useRef, useState, type FormEvent } from "react"
@@ -12,6 +12,7 @@ import { MAX_FILE_BYTES } from "../../../src/import/types.ts"
 export function UploadForm() {
   const inFlight = useRef(false)
   const [pending, setPending] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState({ message: "", url: "" })
   const [failures, setFailures] = useState<RowFailure[]>([])
   const [total, setTotal] = useState(0)
   const [aiReview, setAiReview] = useState<UploadReview | null>(null)
@@ -32,21 +33,22 @@ export function UploadForm() {
     }
     inFlight.current = true
     setPending(true)
+    setUploadStatus({ message: "", url: "" })
     setAiReview(null)
     setFailures([])
     setTotal(0)
     try {
       await compressFormFiles(form, ["sheet"])
       await ensureSession()
-      const response = await apiFetch("/hr/import/preview", {
-        method: "POST",
-        body: form,
+      const response = await submitUpload("/hr/import/preview", form, (message, url) => {
+        setUploadStatus({ message, url })
       })
       if (response.status === 401 || response.status === 403)
         throw new Error(
           "Your HR session is unavailable. Sign in again before uploading."
         )
       const result = (await response.json()) as {
+        error?: string
         aiReview?: UploadReview
         reviewUrl?: string
         failures?: RowFailure[]
@@ -58,7 +60,7 @@ export function UploadForm() {
           result.failures ?? [
             {
               row: 0,
-              message: "The upload could not be validated. Try again.",
+              message: result.error ?? "The upload could not be validated. Try again.",
             },
           ]
         )
@@ -91,6 +93,7 @@ export function UploadForm() {
       encType="multipart/form-data"
       className="panel salary-upload-form"
     >
+      {uploadStatus.url && <p><span role="status">{pending && uploadStatus.message}</span> <a href={uploadStatus.url}>Check upload status</a></p>}
       <div className="panel-heading">
         <div>
           <h2>Choose your salary sheet</h2>

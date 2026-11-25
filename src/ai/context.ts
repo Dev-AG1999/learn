@@ -1,3 +1,4 @@
+import { EMPLOYEE_ID } from "../employee-id.ts"
 import type { Principal } from "../auth/repository.ts"
 import { AuthError } from "../auth/http.ts"
 import { withPayroll, preparePayrollPath } from "../payroll-db.ts"
@@ -18,7 +19,7 @@ export function scopedEmployee(
       throw new AuthError(403)
     return principal.employeeId
   }
-  if (requested && !/^[A-Za-z0-9_-]{1,64}$/.test(requested))
+  if (requested && !EMPLOYEE_ID.test(requested))
     throw new DocumentError("Choose a valid employee ID.")
   return requested
 }

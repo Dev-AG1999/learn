@@ -1,3 +1,4 @@
+import { EMPLOYEE_PREFIX } from "../../../src/employee-id.ts"
 import { EmployeeDirectory } from "./directory.tsx"
 import { requirePage, pageReturnTo } from "../../../src/auth/next.ts"
 import { hrAccess } from "../../../src/access/roles.ts"
@@ -40,7 +41,7 @@ export default async function EmployeesPage({
   const currencies = Intl.supportedValuesOf("currency")
   const valid =
     !!requested &&
-    /^[A-Za-z0-9_-]{0,64}$/.test(prefix) &&
+    EMPLOYEE_PREFIX.test(prefix) &&
     (!currency || (currencies as string[]).includes(currency)) &&
     (query.cursor?.length ?? 0) <= 256
   const page = valid

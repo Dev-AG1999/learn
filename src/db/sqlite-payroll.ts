@@ -1,3 +1,4 @@
+import { EMPLOYEE_PREFIX } from "../employee-id.ts"
 import { randomUUID } from "node:crypto"
 import { validateEntries } from "../import/validation.ts"
 import {
@@ -13,6 +14,7 @@ import {
 import { createHash } from "node:crypto"
 import { validateSalary } from "../salary-validation.ts"
 import { openStorageDatabase } from "./connection.ts"
+import { payrollStatements, PayrollDatabaseError } from "./payroll-statements.ts"
 import {
   computePayslip,
   validatePayrollInput,
@@ -208,7 +210,31 @@ type PayslipRow = {
 }
 
 export function openPayrollDatabase(path: string): PayrollRepository {
-  const db = openStorageDatabase(path)
+  let connection
+  try {
+    connection = openStorageDatabase(path)
+  } catch (cause) {
+    if (cause instanceof Error && cause.message.startsWith("Cannot open encrypted database.")) throw cause
+    throw new PayrollDatabaseError("open the connection", cause)
+  }
+  const db = payrollStatements(connection)
+  try {
+    return createPayrollRepository(db)
+  } catch (error) {
+    try { db.close() } catch { /* Preserve the initialization failure. */ }
+    throw error
+  }
+}
+
+function createPayrollRepository(db: ReturnType<typeof payrollStatements>): PayrollRepository {
+  function rollback(error: unknown, ...statements: string[]): never {
+    try {
+      for (const statement of statements) db.exec(statement)
+    } catch {
+      // Preserve the failure that triggered rollback.
+    }
+    throw error
+  }
   db.exec(`
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS employees (
@@ -475,9 +501,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
       }
       db.exec("RELEASE save_month")
     } catch (error) {
-      db.exec("ROLLBACK TO save_month")
-      db.exec("RELEASE save_month")
-      throw error
+      rollback(error, "ROLLBACK TO save_month", "RELEASE save_month")
     }
 
     return { ok: true, payslip: stored }
@@ -605,8 +629,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
         db.exec("COMMIT")
         return { ok: true, draftId: id }
       } catch (error) {
-        db.exec("ROLLBACK")
-        throw error
+        rollback(error, "ROLLBACK")
       }
     },
     async getPayrollDraft(id, ownerId, page) {
@@ -685,8 +708,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
         db.exec("COMMIT")
         return { ok: true, count: rows.length }
       } catch (error) {
-        db.exec("ROLLBACK")
-        throw error
+        rollback(error, "ROLLBACK")
       }
     },
     async getSalaryVersion(employeeId, year, month) {
@@ -857,8 +879,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
           },
         }
       } catch (error) {
-        db.exec("ROLLBACK")
-        throw error
+        rollback(error, "ROLLBACK")
       }
     },
 
@@ -894,8 +915,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
         ).run(input.documentId, input.shareWithEmployees ? 1 : 0)
         db.exec("COMMIT")
       } catch (error) {
-        db.exec("ROLLBACK")
-        throw error
+        rollback(error, "ROLLBACK")
       }
     },
 
@@ -932,7 +952,7 @@ export function openPayrollDatabase(path: string): PayrollRepository {
         !Number.isInteger(query.month) ||
         query.month < 1 ||
         query.month > 12 ||
-        !/^[A-Za-z0-9_-]{0,64}$/.test(query.prefix) ||
+        !EMPLOYEE_PREFIX.test(query.prefix) ||
         (query.currency &&
           !(Intl.supportedValuesOf("currency") as string[]).includes(
             query.currency

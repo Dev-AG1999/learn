@@ -1,5 +1,5 @@
 "use client"
-import { apiFetch } from "../../src/client/api.ts"
+import { submitUpload } from "../../src/files/jobs/browser.ts"
 import { useState, useRef, type ReactNode, type FormEvent } from "react"
 import { compressFormFiles } from "../../src/files/browser.ts"
 import { ensureSession } from "../../src/auth/browser.ts"
@@ -15,7 +15,8 @@ export function AttachmentForm({
   userId: string
 }) {
   const [phase, setPhase] = useState(""),
-    [error, setError] = useState("")
+    [error, setError] = useState(""),
+    [statusUrl, setStatusUrl] = useState("")
   const busy = useRef(false)
   async function submit(event: FormEvent<HTMLFormElement>) {
     const form = new FormData(event.currentTarget),
@@ -25,6 +26,7 @@ export function AttachmentForm({
     if (busy.current) return
     busy.current = true
     setError("")
+    setStatusUrl("")
     setPhase("Compressing attachment…")
     try {
       await compressFormFiles(form, ["attachment"])
@@ -32,11 +34,9 @@ export function AttachmentForm({
       if (session.timing.userId !== userId)
         throw new Error("Your account changed. Reload before submitting.")
       setPhase("Scanning and storing attachment…")
-      const response = await apiFetch(action, {
-        method: "POST",
-        body: form,
-        headers: { Accept: "application/json" },
-        credentials: "same-origin",
+      const response = await submitUpload(action, form, (message, url) => {
+        setPhase(message)
+        setStatusUrl(url)
       })
       if (response.status === 401 || response.status === 403)
         throw new Error("Your session is unavailable. Sign in again and retry.")
@@ -78,6 +78,7 @@ export function AttachmentForm({
           {phase}
         </p>
       )}
+      {statusUrl && <a href={statusUrl}>Check upload status</a>}
       {error && (
         <div className="notice notice-error" role="alert">
           {error}

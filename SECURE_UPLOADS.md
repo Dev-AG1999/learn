@@ -189,3 +189,28 @@ A connected account can authorize successfully while new uploads fail with Googl
 ## Advisory upload review
 
 All existing attachment fields now request local AI purpose/readability review after both malware scans and deterministic validation. Salary-sheet AI receives a bounded sample and validation report; code validates all rows. AI unavailable/disabled status is visible and does not block valid uploads. PDF/image indexing follows private Drive storage and preserves the file if it fails. Chat attachments use this same pipeline. OCR dependencies and limits are documented in DOCUMENT_AI.md.
+
+## Background uploads
+
+With an encrypted payroll database, set `UPLOAD_QUEUE_ENABLED=true` in the app
+and worker environments, then run `npm run uploads:worker` alongside the app.
+Both processes must use the same persistent `PAYROLL_DB`, keys, and upload
+service configuration. In a deployed environment, run the worker under a
+supervisor. Browser attachment forms, salary previews and chat send
+`Prefer: respond-async`. API clients can send that preference with a multipart
+upload and poll the authenticated `Location` URL from the response. Requests
+without the preference still receive the synchronous response.
+
+A queued request keeps its bounded multipart payload in encrypted SQLite.
+The worker processes one job at a time, checks the account again before
+processing, and removes the staged payload on completion. Queue limits are
+20 pending or processing jobs total and three per account. Pending jobs
+expire after an hour, and result links expire after 24 hours. Salary previews
+still have their usual 15-minute draft deadline, starting when the draft is
+created. The status screen belongs to the submitting account.
+
+Queued work survives a restart. If a worker disappears after starting work,
+the job is reported as interrupted when its lease expires. An interrupted
+job may have already written to Drive or saved a related record, so review
+the workspace before resubmitting. The worker does not automatically replay
+an operation with an uncertain outcome.

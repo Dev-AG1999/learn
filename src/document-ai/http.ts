@@ -1,3 +1,5 @@
+import type { Principal } from "../auth/repository.ts"
+import { maybeQueueUpload } from "../files/jobs/http.ts"
 import { filePrincipal } from "../files/auth.ts"
 import { fileFailure } from "../files/http.ts"
 import { attachmentForm, storeFormFile } from "../files/attachments.ts"
@@ -19,6 +21,12 @@ async function json(request: Request): Promise<Record<string, unknown>> {
 export async function uploadResponse(request: Request): Promise<Response> {
   try {
     const principal = await filePrincipal(request)
+    const queued = await maybeQueueUpload(request, principal, "pdf")
+    return queued ?? processPdfUpload(request, principal)
+  } catch (error) { return failure(error) }
+}
+export async function processPdfUpload(request: Request, principal: Principal): Promise<Response> {
+  try {
     requireDocumentAi()
     let fileId: unknown
     if (request.headers.get("content-type")?.includes("application/json")) {

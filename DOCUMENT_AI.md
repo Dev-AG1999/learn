@@ -56,3 +56,14 @@ Ollama must run on the same host under the loopback-only configuration. A hosted
 Unit/integration checks cover role isolation, policy publication, source and number validation, bounded arithmetic, conversation request validation, upload scan/review ordering and nonblocking AI failures. Browser checks use synthetic payroll, Drive/scanner and local model fixtures rather than personal documents. Native OCR and actual local-model smoke tests use synthetic documents. See the milestone handoff for final executed checks. No Git commits are created automatically.
 
 Final validation for this milestone: 310 tests in 49 files passed, along with TypeScript and the production build. Chrome checks passed for both role workspaces, automatic review, secure chat image upload with native OCR, citations and responsive layouts. Native OCR passed synthetic PNG and image-only PDF checks. Actual Qwen3/Nomic checks passed on a synthetic payslip (extraction, embeddings, encrypted vector retrieval and cited answer); the real chatbot also cited saved synthetic payroll and explicitly stated the missing deduction reason. Real-model sample sheet review and code-based arithmetic passed. Google/scanner browser integration uses isolated protocol fixtures; these checks do not certify every real document or model interpretation.
+
+
+## Structured generation adapters
+
+Chat, upload review and document answers share the schema-validated generation
+boundary in `src/ai/structured-provider.ts`. An additional model can implement
+`StructuredModelAdapter` to accept system and user messages and return parsed
+data or JSON. The feature's Zod schema validates the output independently of the
+provider. Embeddings have their own provider/profile contract because switching
+embedding models can require reindexing. Private payroll and document workflows
+continue to use the configured loopback Ollama model.

@@ -1,3 +1,4 @@
+import { HEX_32_BYTE_KEY } from "../crypto-patterns.ts"
 import { SESSION_SECONDS, ABSOLUTE_SECONDS } from "./policy.ts"
 export { SESSION_SECONDS } from "./policy.ts"
 export const REFRESH_COOKIE_NAME =
@@ -11,7 +12,7 @@ export const COOKIE_NAME =
 
 export function jwtKey(): Uint8Array {
   const value = process.env.AUTH_JWT_SECRET ?? ""
-  if (!/^[a-f0-9]{64}$/i.test(value)) {
+  if (!HEX_32_BYTE_KEY.test(value)) {
     throw new Error(
       "AUTH_JWT_SECRET must be a random 32-byte key encoded as 64 hexadecimal characters."
     )

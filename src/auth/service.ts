@@ -1,3 +1,4 @@
+import { LOWERCASE_HEX_32_BYTE_TOKEN } from "../crypto-patterns.ts"
 import { randomBytes, randomUUID } from "node:crypto"
 import { digest } from "./repository.ts"
 import { ABSOLUTE_SECONDS, IDLE_SECONDS } from "./policy.ts"
@@ -90,7 +91,7 @@ export async function renew(
   refreshToken: string,
   now = Math.floor(Date.now() / 1000)
 ) {
-  if (!/^[a-f0-9]{64}$/.test(refreshToken))
+  if (!LOWERCASE_HEX_32_BYTE_TOKEN.test(refreshToken))
     return { ok: false as const, status: 401 as const }
   const hash = digest(refreshToken)
   const userId = db.refreshSubject(hash)

@@ -1,9 +1,11 @@
 "use client"
+import { directoryColumns, EmployeeDirectoryTable } from "./directory-table.tsx"
+import { EMPLOYEE_PREFIX_PATTERN, MAX_EMPLOYEE_ID_LENGTH } from "../../../src/employee-id.ts"
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import type { EmployeeDirectoryPage } from "../../../src/db/sqlite-payroll.ts"
 import { apiFetch, JsonReadCache, canonicalQuery, debounce, throttle } from "../../../src/client/api.ts"
 import { ensureSession } from "../../../src/auth/browser.ts"
-import { formatMoney, monthNames, periodLabel, periodQuery } from "../../../src/presentation.ts"
+import { monthNames, periodLabel, periodQuery } from "../../../src/presentation.ts"
 import { EmptyState } from "../../components/workspace.tsx"
 import { Icon } from "../../components/ui-icon.tsx"
 type Query = {
@@ -160,8 +162,8 @@ export function EmployeeDirectory({
             <input
               name="q"
               defaultValue={initialQuery.q ?? ""}
-              maxLength={64}
-              pattern="[A-Za-z0-9_-]*"
+              maxLength={MAX_EMPLOYEE_ID_LENGTH}
+              pattern={EMPLOYEE_PREFIX_PATTERN}
               placeholder="e.g. EMP- or HR-DEMO-"
             />
           </label>
@@ -221,59 +223,11 @@ export function EmployeeDirectory({
           </span>
         </div>
         {page.employees.length ? (
-          <div className="table-wrap">
-            <table>
-              <caption className="sr-only">
-                Employee directory and saved pay for {periodLabel(period)}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Employee ID</th>
-                  <th scope="col">Current annual CTC</th>
-                  <th scope="col">Monthly net pay</th>
-                  <th scope="col">Payslip</th>
-                  <th scope="col">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.employees.map((employee) => (
-                  <tr key={employee.employeeId}>
-                    <td>
-                      <strong>{employee.employeeId}</strong>
-                    </td>
-                    <td className="amount">
-                      {employee.currency}{" "}
-                      {formatMoney(employee.annualCtcMinor, employee.currency)}
-                    </td>
-                    <td className="amount">
-                      {employee.monthlyNetMinor !== null &&
-                      employee.monthlyCurrency
-                        ? `${employee.monthlyCurrency} ${formatMoney(employee.monthlyNetMinor, employee.monthlyCurrency)}`
-                        : "—"}
-                    </td>
-                    <td>
-                      <span
-                        className={`badge ${employee.monthlyNetMinor !== null ? "badge-green" : "badge-neutral"}`}
-                      >
-                        {employee.monthlyNetMinor !== null
-                          ? "Available"
-                          : "Not saved this month"}
-                      </span>
-                    </td>
-                    <td>
-                      <a
-                        className="text-link"
-                        href={`/hr/salary?employeeId=${encodeURIComponent(employee.employeeId)}&${periodQuery(period)}`}
-                        aria-label={`Edit salary for ${employee.employeeId}`}
-                      >
-                        Edit salary <Icon name="arrow" size={15} />
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <EmployeeDirectoryTable
+            employees={page.employees}
+            period={period}
+            columns={directoryColumns}
+          />
         ) : (
           <EmptyState
             icon="users"

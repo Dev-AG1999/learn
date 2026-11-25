@@ -25,7 +25,7 @@ HR can manually stage a new employee's first monthly salary or upload CSV/single
 
 Drafts are owner-bound, expire after 15 minutes and use 25-row review pages with bounded retention. Confirmation checks current versions and commits the whole batch atomically. Replaying a successful confirmation is idempotent; failures must not partially commit payroll. Import never creates authentication accounts.
 
-The HR-only employee directory uses case-sensitive employee-ID prefix search, current-CTC currency filtering and indexed 25-row keyset pagination. Employees remain listed without a payslip in the selected month. Current CTC and historical snapshot currencies are distinguished. Org totals are grouped by currency, never summed across currencies.
+The HR-only employee directory uses case-sensitive employee-ID prefix search, current-CTC currency filtering and indexed 25-row keyset pagination. Employees remain listed without a payslip in the selected month. Current CTC and historical snapshot currencies are distinguished. Org totals are grouped by currency, never summed across currencies. Directory headers and cells use the same column definitions in code for every employee.
 
 ## Authentication and sensitive data
 

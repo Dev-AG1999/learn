@@ -1,3 +1,4 @@
+import { HEX_32_BYTE_KEY } from "../crypto-patterns.ts"
 import {
   createCipheriv,
   createDecipheriv,
@@ -8,7 +9,7 @@ import { FileError } from "./types.ts"
 export const fingerprint = (value: string | Uint8Array) =>
   createHash("sha256").update(value).digest("hex")
 export function storageKey(): Buffer {
-  if (!/^[a-f0-9]{64}$/i.test(process.env.DRIVE_TOKEN_SECRET ?? ""))
+  if (!HEX_32_BYTE_KEY.test(process.env.DRIVE_TOKEN_SECRET ?? ""))
     throw new FileError(
       "Configure DRIVE_TOKEN_SECRET with a separate random 32-byte hex key.",
       503

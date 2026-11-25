@@ -1,3 +1,4 @@
+import { HEX_32_BYTE_KEY } from "../crypto-patterns.ts"
 import { DocumentError } from "./types.ts"
 
 export function selectedAiProvider(): "openai" | "ollama" {
@@ -33,7 +34,7 @@ export function requireDocumentAi(): void {
     throw new DocumentError("The document assistant requires the local Ollama provider.", 503)
   if ([process.env.LANGSMITH_TRACING, process.env.LANGCHAIN_TRACING_V2, process.env.LANGCHAIN_TRACING].some((value) => value === "true"))
     throw new DocumentError("Disable AI tracing before processing private documents.", 503)
-  if (!/^[a-f0-9]{64}$/i.test(process.env.DATABASE_ENCRYPTION_KEY ?? ""))
+  if (!HEX_32_BYTE_KEY.test(process.env.DATABASE_ENCRYPTION_KEY ?? ""))
     throw new DocumentError("Configure encrypted database storage before enabling document AI.", 503)
   ollamaBaseUrl()
 }

@@ -31,6 +31,8 @@ vi.mock("../src/files/drive.ts", () => ({
   }),
 }))
 import { POST as documents } from "../app/hr/documents/route.ts"
+import { GET as uploadStatusRoute } from "../app/api/uploads/[id]/route.ts"
+import { runUploadWorker } from "../src/files/jobs/worker.ts"
 import { POST as claims } from "../app/employee/[employeeId]/claims/route.ts"
 import { POST as preview } from "../app/hr/import/preview/route.ts"
 import { downloadFileResponse, signedLinkResponse } from "../src/files/http.ts"
@@ -454,3 +456,54 @@ test("Drive storage exhaustion returns actionable 507 without staging or saving 
     expect(raw.prepare("SELECT count(*) AS count FROM payroll_drafts").get()).toMatchObject({ count: 0 })
   } finally { raw.close() }
 })
+
+test("queued attachments survive separate database opens, and only the owner can read the result", async () => {
+  vi.stubEnv("UPLOAD_QUEUE_ENABLED", "true")
+  // This case needs the encryption key configured before the database is opened.
+  const queuePath = join(dir, "queued.sqlite")
+  vi.stubEnv("PAYROLL_DB", queuePath)
+  vi.stubEnv("DATABASE_ENCRYPTION_KEY", "ef".repeat(32))
+  await withAuth((db) => {
+    db.provision("hr-a", hash, "hr", null)
+    db.provision("hr-b", hash, "hr", null)
+    hrId = db.findUser("hr-a")!.userId
+  })
+  await withFiles((db) => db.saveConnection({
+    userId: hrId,
+    driveUserId: "google-user",
+    folderId: "private-folder",
+    refreshToken: "private-refresh",
+    accessToken: "private-access",
+    expiresAt: Date.now() + 3600000,
+  }))
+  const owner = await login("hr-a")
+  const other = await login("hr-b")
+  const request = formRequest("/hr/documents", owner,
+    { documentId: "queued-policy", body: "Approved policy text" },
+    { name: "policy.pdf", bytes: pdf })
+  request.headers.set("Prefer", "respond-async")
+  const response = await documents(request)
+  expect(response.status).toBe(202)
+  const { jobId } = await response.json()
+  const poll = (cookie: string) => uploadStatusRoute(new Request(origin + "/api/uploads/" + jobId, {
+    headers: { Cookie: cookie },
+  }), { params: Promise.resolve({ id: jobId }) })
+
+  expect(await (await poll(owner)).json()).toEqual({ state: "queued" })
+  expect((await poll(other)).status).toBe(404)
+  expect(mocks.scan).not.toHaveBeenCalled()
+  const worker = new AbortController()
+  const run = runUploadWorker(worker.signal)
+  try {
+    await vi.waitFor(async () => {
+      const status = await (await poll(owner)).json()
+      expect(status).toMatchObject({ state: "finished", status: 200 })
+      expect(status.result.redirectUrl).toContain("notice=document-saved")
+    }, { timeout: 4000 })
+  } finally {
+    worker.abort()
+    await run
+  }
+  expect(mocks.scan).toHaveBeenCalledTimes(2)
+  expect(mocks.put).toHaveBeenCalledTimes(1)
+}, 12_000)

@@ -1,4 +1,5 @@
-import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai"
+import { openAiStructuredModel } from "../ai/structured-provider.ts"
+import { OpenAIEmbeddings } from "@langchain/openai"
 import { DOCUMENT_SYSTEM_PROMPT, documentAnswerSchema } from "./prompt.ts"
 import { selectedAiProvider } from "./config.ts"
 import { ollamaProvider } from "./ollama.ts"
@@ -16,30 +17,17 @@ export function openAiProvider(configuration?: {
     batchSize: 32,
     configuration,
   })
-  const structured = new ChatOpenAI({
-    model: process.env.AI_MODEL ?? "gpt-5.4-mini",
-    useResponsesApi: true,
-    zdrEnabled: true,
-    maxRetries: 1,
-    timeout: 45_000,
-    maxTokens: 1800,
-    configuration,
-  }).withStructuredOutput(documentAnswerSchema, {
+  const structured = openAiStructuredModel(documentAnswerSchema, {
+    timeout: 50_000,
     name: "document_answer",
-    strict: true,
+    configuration,
   })
   return {
     embeddingProfile: "openai-v1",
     embedDocuments: (texts) => embeddings.embedDocuments(texts),
     embedQuery: (text) => embeddings.embedQuery(text),
     async answer(question, passages) {
-      return structured.invoke(
-        [
-          ["system", DOCUMENT_SYSTEM_PROMPT],
-          ["human", JSON.stringify({ question, sourcePassages: passages })],
-        ],
-        { signal: AbortSignal.timeout(50_000), callbacks: [] }
-      )
+      return structured(DOCUMENT_SYSTEM_PROMPT, { question, sourcePassages: passages })
     },
   }
 }

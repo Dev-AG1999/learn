@@ -1,3 +1,4 @@
+import { LOWERCASE_HEX_32_BYTE_TOKEN } from "../crypto-patterns.ts"
 import { randomBytes } from "node:crypto"
 import { jwtVerify, SignJWT } from "jose"
 import { jwtKey, SESSION_SECONDS } from "./config.ts"
@@ -25,7 +26,7 @@ export async function verifyToken(token: string, now = Math.floor(Date.now() / 1
       requiredClaims: ["sub", "jti", "iat", "exp"], currentDate: new Date(now * 1000),
     })
     if (typeof payload.sub !== "string" || !payload.sub || typeof payload.jti !== "string" ||
-        !/^[a-f0-9]{64}$/.test(payload.jti) || typeof payload.iat !== "number" ||
+        !LOWERCASE_HEX_32_BYTE_TOKEN.test(payload.jti) || typeof payload.iat !== "number" ||
         typeof payload.exp !== "number" || payload.iat > now || payload.exp - payload.iat !== SESSION_SECONDS) return null
     return { userId: payload.sub, sessionId: payload.jti }
   } catch { return null }

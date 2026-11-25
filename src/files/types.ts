@@ -1,6 +1,8 @@
 import type { Principal } from "../auth/repository.ts"
 export const MAX_ORIGINAL_BYTES = 8 * 1024 * 1024
 export const MAX_COMPRESSED_BYTES = 9 * 1024 * 1024
+export const MAX_CONCURRENT_UPLOADS = 2
+export const NORMALIZATION_TIMEOUT_MS = 15_000
 export type FileScope = Pick<Principal, "userId" | "role">
 export type FileKind = "pdf" | "jpeg" | "png" | "csv" | "xlsx"
 export class FileError extends Error {

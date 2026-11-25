@@ -1,4 +1,5 @@
 "use client"
+import { NEW_EMPLOYEE_ID_PATTERN, MAX_EMPLOYEE_ID_LENGTH } from "../../../../src/employee-id.ts"
 
 import { useActionState, useState } from "react"
 import { previewEmployee, type EmployeeState } from "./actions.ts"
@@ -42,8 +43,8 @@ export function EmployeeForm({
             <input
               name="employeeId"
               defaultValue={state.values?.employeeId}
-              maxLength={64}
-              pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}"
+              maxLength={MAX_EMPLOYEE_ID_LENGTH}
+              pattern={NEW_EMPLOYEE_ID_PATTERN}
               required
               placeholder="e.g. EMP-001"
             />

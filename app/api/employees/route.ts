@@ -1,3 +1,4 @@
+import { EMPLOYEE_PREFIX } from "../../../src/employee-id.ts"
 import { requireReadPrincipal } from "../../../src/auth/request.ts"
 import { authorize, AuthError, authFailure } from "../../../src/auth/http.ts"
 import { withPayroll } from "../../../src/payroll-db.ts"
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
     const prefix = (query.get("q") ?? "").trim()
     const currency = query.get("currency") ?? ""
     const cursor = query.get("cursor")
-    if (!period || !/^[A-Za-z0-9_-]{0,64}$/.test(prefix) ||
+    if (!period || !EMPLOYEE_PREFIX.test(prefix) ||
       (currency && !Intl.supportedValuesOf("currency").includes(currency)) || (cursor?.length ?? 0) > 256)
       return Response.json({ error: "Choose valid search filters." }, { status: 400, headers: { "Cache-Control": "no-store" } })
     const page = await withPayroll((db) => hrAccess(db).listEmployees({ ...period, prefix, currency, cursor, limit: 25 }))

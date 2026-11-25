@@ -1,3 +1,4 @@
+import { HEX_32_BYTE_KEY } from "../crypto-patterns.ts"
 import { DatabaseSync } from "node:sqlite"
 import EncryptedDatabase from "better-sqlite3-multiple-ciphers"
 
@@ -10,7 +11,7 @@ export function databaseKey(): Buffer | null {
       throw new Error("DATABASE_ENCRYPTION_KEY is required in production.")
     return null
   }
-  if (!/^[a-f0-9]{64}$/i.test(value))
+  if (!HEX_32_BYTE_KEY.test(value))
     throw new Error("DATABASE_ENCRYPTION_KEY must be a random 32-byte hex key.")
   if ([process.env.AUTH_JWT_SECRET, process.env.DRIVE_TOKEN_SECRET].includes(value))
     throw new Error("Use a separate key for database encryption.")

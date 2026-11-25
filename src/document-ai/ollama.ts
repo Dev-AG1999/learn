@@ -1,4 +1,5 @@
-import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama"
+import { localModelFetch, ollamaStructuredModel } from "../ai/structured-provider.ts"
+import { OllamaEmbeddings } from "@langchain/ollama"
 import { ollamaBaseUrl } from "./config.ts"
 import { DOCUMENT_SYSTEM_PROMPT, documentAnswerSchema } from "./prompt.ts"
 import { DocumentError, type LanguageProvider } from "./types.ts"
@@ -9,42 +10,16 @@ export function ollamaProvider(configuration?: {
   fetch: typeof fetch
 }): LanguageProvider {
   const baseUrl = ollamaBaseUrl()
-  // Disable redirects: a local request must never forward PDF text elsewhere.
-  const localFetch: typeof fetch = async (input, init) => {
-    const signal = init?.signal
-      ? AbortSignal.any([init.signal, AbortSignal.timeout(120_000)])
-      : AbortSignal.timeout(120_000)
-    return (configuration?.fetch ?? fetch)(input, {
-      ...init,
-      signal,
-      redirect: "error",
-    })
-  }
+  const timeout = 120_000
+  const structured = ollamaStructuredModel(documentAnswerSchema, {
+    timeout, maxTokens: 1800, name: "document_answer", fetch: configuration?.fetch,
+  })
   const embeddings = new OllamaEmbeddings({
     model: LOCAL_EMBEDDING_MODEL,
     baseUrl,
     truncate: false,
     maxRetries: 0,
-    fetch: localFetch,
-  })
-  const model = process.env.OLLAMA_CHAT_MODEL ?? "qwen3:4b"
-  if (!/^qwen3:(?:0\.6b|1\.7b|4b|8b)$/.test(model))
-    throw new DocumentError(
-      "Choose a supported local Qwen3 model: 0.6b, 1.7b, 4b or 8b.",
-      503
-    )
-  const structured = new ChatOllama({
-    model,
-    baseUrl,
-    temperature: 0,
-    think: false,
-    numCtx: 16_384,
-    numPredict: 1800,
-    maxRetries: 0,
-    fetch: localFetch,
-  }).withStructuredOutput(documentAnswerSchema, {
-    name: "document_answer",
-    method: "jsonSchema",
+    fetch: localModelFetch(timeout, configuration?.fetch),
   })
   async function embed(texts: string[]): Promise<number[][]> {
     const vectors: number[][] = []
@@ -77,13 +52,7 @@ export function ollamaProvider(configuration?: {
       return (await embed([`search_query: ${text}`]))[0]
     },
     async answer(question, passages) {
-      return structured.invoke(
-        [
-          ["system", DOCUMENT_SYSTEM_PROMPT],
-          ["human", JSON.stringify({ question, sourcePassages: passages })],
-        ],
-        { signal: AbortSignal.timeout(120_000), callbacks: [] }
-      )
+      return structured(DOCUMENT_SYSTEM_PROMPT, { question, sourcePassages: passages })
     },
   }
 }

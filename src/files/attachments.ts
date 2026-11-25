@@ -2,7 +2,7 @@ import { documentAiConfigured } from "../document-ai/config.ts"
 import { indexSecurePdf } from "../document-ai/runtime.ts"
 import { reviewUpload, type UploadContext } from "../ai/review.ts"
 import type { Principal } from "../auth/repository.ts"
-import { FileError, type StoredFile } from "./types.ts"
+import { FileError, MAX_CONCURRENT_UPLOADS, type StoredFile } from "./types.ts"
 import { boundedForm } from "../import/request.ts"
 import { requireUploadsEnabled } from "./config.ts"
 import { withFiles } from "./repository.ts"
@@ -35,7 +35,7 @@ export async function storeFormFile(
     form.get(`${field}Encoding`) !== "gzip"
   )
     throw new FileError("Choose one browser-compressed file.")
-  if (activeUploads >= 2)
+  if (activeUploads >= MAX_CONCURRENT_UPLOADS)
     throw new FileError("Upload processing is busy. Please retry shortly.", 429)
   activeUploads++
   try {
